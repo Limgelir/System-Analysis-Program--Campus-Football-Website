@@ -251,26 +251,40 @@ async function assertMigrationsCurrent(connection, options = {}) {
   return status;
 }
 
+function migrationLockName(databaseName) {
+  if (typeof databaseName !== 'string' || !databaseName) {
+    throw new Error('数据库迁移需要先选择目标数据库');
+  }
+  const name = `${databaseName}:schema_migrations`;
+  // MySQL 命名锁最多 64 个字符；短名称沿用旧格式，长名称按完整库名哈希以保持隔离。
+  return Array.from(name).length <= 64
+    ? name
+    : crypto.createHash('sha256').update(name).digest('hex');
+}
+
 async function acquireMigrationLock(connection) {
+  const [databases] = await connection.execute('SELECT DATABASE() AS databaseName');
+  const lockName = migrationLockName(databases[0].databaseName);
   const [rows] = await connection.execute(
-    'SELECT GET_LOCK(CONCAT(DATABASE(), ?), ?) AS acquired',
-    [':schema_migrations', LOCK_TIMEOUT_SECONDS]
+    'SELECT GET_LOCK(?, ?) AS acquired',
+    [lockName, LOCK_TIMEOUT_SECONDS]
   );
   if (Number(rows[0].acquired) !== 1) {
     throw new Error('无法取得数据库迁移锁，可能有另一个迁移进程正在运行');
   }
+  return lockName;
 }
 
-async function releaseMigrationLock(connection) {
+async function releaseMigrationLock(connection, lockName) {
   try {
-    await connection.execute('SELECT RELEASE_LOCK(CONCAT(DATABASE(), ?))', [':schema_migrations']);
+    await connection.execute('SELECT RELEASE_LOCK(?)', [lockName]);
   } catch (error) {
     console.error('释放数据库迁移锁失败:', error.message);
   }
 }
 
 async function runPendingMigrations(connection, options = {}) {
-  await acquireMigrationLock(connection);
+  const lockName = await acquireMigrationLock(connection);
   try {
     await ensureMigrationTable(connection);
     const status = await getMigrationStatus(connection, options);
@@ -295,7 +309,7 @@ async function runPendingMigrations(connection, options = {}) {
 
     return { ...status, executed };
   } finally {
-    await releaseMigrationLock(connection);
+    await releaseMigrationLock(connection, lockName);
   }
 }
 
@@ -313,5 +327,6 @@ module.exports = {
   getMigrationStatus,
   formatMigrationProblems,
   assertMigrationsCurrent,
+  migrationLockName,
   runPendingMigrations
 };
