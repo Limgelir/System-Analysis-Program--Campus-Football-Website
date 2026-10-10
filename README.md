@@ -25,7 +25,7 @@ npm --prefix frontend ci
 npm --prefix player-frontend ci
 ```
 
-本机已有副本时，直接进入 `D:\Limgelir\Files\System Analysis`，再执行三条安装命令即可。仓库根目录没有 `package.json`，三个子项目分别安装依赖。
+仓库根目录没有 `package.json`，三个子项目分别安装依赖。后续命令均在仓库根目录执行。
 
 ### 2. 配置课程专用环境
 
@@ -39,8 +39,8 @@ Copy-Item backend/.env.example backend/.env
 
 | 配置项 | 本地设置 |
 | --- | --- |
-| `DB_HOST`、`DB_PORT` | 本机 MySQL 地址和端口，默认 `127.0.0.1:3306` |
-| `DB_USER`、`DB_PASSWORD` | 本机 MySQL 账号和密码 |
+| `DB_HOST`、`DB_PORT` | MySQL 地址和端口，默认 `127.0.0.1:3306` |
+| `DB_USER`、`DB_PASSWORD` | MySQL 账号和密码 |
 | `DB_NAME` | `campus_football_course`，课程专用数据库 |
 | `TEST_DB_NAME` | `campus_football_course_test`，自动化测试专用数据库 |
 | `JWT_SECRET` | 自行生成的随机密钥 |
@@ -58,9 +58,9 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
 
 ### 3. 创建并初始化空数据库
 
-先启动本机 MySQL 服务。Windows 服务名若为 `MySQL80`，可在管理员 PowerShell 执行 `Start-Service MySQL80`。
+先启动 MySQL 服务。Windows 服务名若为 `MySQL80`，可在管理员 PowerShell 执行 `Start-Service MySQL80`；其它服务名请按实际安装配置调整。
 
-创建一个全新的课程数据库（提示时输入本机 MySQL 密码）：
+创建一个全新的课程数据库（提示时输入 MySQL 密码）：
 
 ```powershell
 mysql -u root -p -e "CREATE DATABASE campus_football_course CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
@@ -76,7 +76,7 @@ Remove-Item Env:INIT_CONFIRM
 npm --prefix backend run migrate
 ```
 
-不要直接导入 `db/final_schema.sql`：该历史基础脚本包含固定的 `referee_system` 库名和删表语句。课程启动使用上面的空库初始化命令，由程序将结构导入 `.env` 指定的课程数据库，避免影响原项目。
+不要直接导入 `db/final_schema.sql`：该历史基础脚本包含固定的 `referee_system` 库名和删表语句。请使用上面的空库初始化命令，由程序将结构导入 `.env` 指定的数据库，避免影响其它数据库。
 
 ### 4. 创建管理员
 
@@ -117,7 +117,7 @@ npm --prefix player-frontend run dev
 
 首次登录后，管理员需要创建并启用赛季、添加赛事并配置报名窗口，之后再进行球员/裁判注册审核、球队报名及赛程安排。新数据库初始没有业务数据。
 
-两个前端固定使用 5174、5175 端口，后端使用 3000。若原项目正在使用这些端口，先停止原项目的本地服务；前端不会自动切换到其它端口。
+两个前端固定使用 5174、5175 端口，后端使用 3000。若端口被占用，请停止占用进程后重试；前端不会自动切换到其它端口。
 
 ## 测试与构建
 
