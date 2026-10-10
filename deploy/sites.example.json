@@ -1,0 +1,14 @@
+{
+  "refereeDomain": "referee.tongjifa.com",
+  "refereeAliases": ["ref.tongjifa.com"],
+  "playerDomain": "player.tongjifa.com",
+  "refereeRoot": "/var/www/tj-refweb",
+  "playerRoot": "/var/www/tj-player",
+  "acmeRoot": "/var/lib/tj-refweb/acme",
+  "certificate": "/etc/letsencrypt/live/tj-refweb/fullchain.pem",
+  "certificateKey": "/etc/letsencrypt/live/tj-refweb/privkey.pem",
+  "logRoot": "/var/log/tj-refweb",
+  "httpPort": 80,
+  "httpsPort": 443,
+  "backendPort": 3000
+}

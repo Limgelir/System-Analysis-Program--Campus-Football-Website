@@ -1,0 +1,11 @@
+[Unit]
+Description=Check TJ RefWeb every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+RandomizedDelaySec=15s
+Unit=tj-refweb-monitor.service
+
+[Install]
+WantedBy=timers.target

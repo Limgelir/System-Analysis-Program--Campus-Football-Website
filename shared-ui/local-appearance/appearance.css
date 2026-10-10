@@ -1,0 +1,57 @@
+/* Loaded for local preview or eligible accounts. Tables and fields stay solid. */
+html[data-local-appearance="frosted"] .ui-shell {
+  background: radial-gradient(ellipse at 90% 0, #d9e8f7 0, transparent 46%), radial-gradient(ellipse at 4% 28%, #e2f0f2 0, transparent 40%), var(--canvas);
+}
+
+html[data-local-appearance="frosted"] .ui-app :is(.ui-brandbar, .ui-navigation, .ui-floating-actions, .report-notice, .modal-content, .modal-card, .modal-panel, .detail-modal, .form-modal, .review-modal, .edit-dialog, .external-dialog, .image-modal-card) {
+  background: rgb(255 255 255 / var(--local-glass-tint, 8%));
+  -webkit-backdrop-filter: blur(var(--local-glass-blur, 3px)) saturate(135%);
+  backdrop-filter: blur(var(--local-glass-blur, 3px)) saturate(135%);
+  border: 1px solid rgb(255 255 255 / 72%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #abc4df55, 0 8px 30px #23477015;
+  background-clip: padding-box;
+}
+
+html[data-local-appearance="frosted"] .ui-brandbar { border-radius: 22px; margin: 12px 16px; }
+html[data-local-appearance="frosted"] .ui-navigation { border-radius: 20px; margin: 12px 8px; padding: 20px 10px; top: 12px; max-height: calc(100dvh - 24px); }
+html[data-local-appearance="frosted"] .ui-app :is(.ui-floating-actions, .report-notice) { border-radius: 18px; }
+html[data-local-appearance="frosted"] .ui-app :is(.modal-content, .modal-card, .modal-panel, .detail-modal, .form-modal, .review-modal, .edit-dialog, .external-dialog, .image-modal-card) { border-radius: 22px; }
+
+/* A light scrim keeps dark dialog text readable with the selected 8% white tint. */
+html[data-local-appearance="frosted"] .ui-app :is(.modal-overlay, .modal-mask, .external-overlay, .image-modal) { background: rgb(229 237 247 / 90%); }
+html[data-local-appearance="frosted"] .ui-app :is(.modal-header, .modal-head, .image-modal-header, .image-modal-footer) { background: rgb(255 255 255 / var(--local-glass-tint, 8%)); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-local-appearance="frosted"] .ui-app :is(.ui-brandbar, .ui-navigation, .ui-floating-actions, .report-notice, .modal-content, .modal-card, .modal-panel, .detail-modal, .form-modal, .review-modal, .edit-dialog, .external-dialog, .image-modal-card) { background: #f8fbff; }
+}
+
+.local-appearance-tools { position: fixed; right: 20px; bottom: max(20px, env(safe-area-inset-bottom)); z-index: 2000; color: #193957; font: 14px/1.6 system-ui, -apple-system, "Microsoft YaHei", sans-serif; }
+.local-appearance-tools * { box-sizing: border-box; }
+.local-appearance-tools button { font: inherit; font-weight: 600; cursor: pointer; border: 1px solid #d5e1ee; padding: 9px 14px; min-height: 42px; background: #fff; color: #244f7d; border-radius: 12px; }
+.local-appearance-tools button:hover { background: #edf4fc; }
+.local-appearance-tools :focus-visible { outline: 3px solid #397bc2; outline-offset: 3px; }
+.local-appearance-launcher { display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 20px #23477020; margin-left: auto; }
+.local-appearance-launcher span { font-size: 11px; color: #6b8095; border-left: 1px solid #d5e1ee; padding-left: 10px; }
+.local-appearance-panel { position: absolute; right: 0; bottom: 56px; width: min(340px, calc(100vw - 24px)); max-height: calc(100dvh - 105px); overflow-y: auto; padding: 20px; border: 1px solid #d8e3ef; border-radius: 22px; background: #fff; box-shadow: 0 12px 50px #17375626; }
+.local-appearance-panel header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.local-appearance-panel h2 { font-size: 19px; margin: 0; color: #193957; }
+.local-appearance-panel header small { color: #71869b; font-size: 11px; }
+.local-appearance-panel header button { flex: 0 0 44px; width: 44px; height: 44px; font-size: 24px; line-height: 1; border: 0; padding: 8px 12px; }
+.local-appearance-modes { display: flex; gap: 4px; padding: 4px; background: #edf3f8; border-radius: 14px; margin-bottom: 20px; }
+.local-appearance-modes button { flex: 1; border: 0; background: transparent; }
+.local-appearance-modes button[aria-pressed="true"] { background: #fff; box-shadow: 0 2px 7px #23477012; }
+.local-appearance-panel label { display: flex; justify-content: space-between; font-size: 13px; margin: 12px 0 0; color: #52718d; }
+.local-appearance-panel output { color: #244f7d; font-variant-numeric: tabular-nums; }
+.local-appearance-panel input[type="range"] { display: block; width: 100%; margin: 2px 0 12px; padding: 0; height: 28px; min-height: 28px; accent-color: #37648d; }
+.local-appearance-panel input:disabled { opacity: .4; }
+.local-appearance-panel p { margin: 12px 0 0; font-size: 12px; }
+.local-appearance-panel .local-appearance-section-label { margin: 0 0 8px; color: #52718d; }
+.local-appearance-hint, .local-appearance-status { color: #5a738c; }
+.local-appearance-panel .local-appearance-reset { width: 100%; margin-top: 18px; font-size: 12px; }
+.local-appearance-panel .local-appearance-footnote { font-size: 11px; color: #74879b; }
+@media (max-width: 900px) {
+  html[data-local-appearance="frosted"] .ui-brandbar { margin: 10px; border-radius: 20px; }
+  html[data-local-appearance="frosted"] .ui-navigation { margin: 10px; max-height: none; padding: 16px; }
+}
+@media (max-width: 600px) { .local-appearance-tools { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); } }
+@media print { .local-appearance-tools { display: none; } }

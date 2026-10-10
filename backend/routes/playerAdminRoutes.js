@@ -1,0 +1,15 @@
+const express = require('express');
+const { requireAdmin } = require('../middleware/auth');
+const player = require('../services/playerService');
+const rules = require('../utils/playerRules');
+const { handler } = require('./playerRoutes');
+const router=express.Router();
+router.use((req,res,next)=>{ res.set('Cache-Control','no-store'); next(); });
+router.use(requireAdmin);
+router.get('/',handler(req=>player.adminList(req.query)));
+router.get('/:id',handler(async req=>({player:await player.getProfile(rules.id(req.params.id)),history:await player.history(rules.id(req.params.id))})));
+router.post('/:id/reset-password',handler(req=>player.resetPassword(rules.id(req.params.id),req.body,rules.revision(req.get('If-Match')),req.user)));
+router.put('/:id/status',handler(req=>player.setActive(rules.id(req.params.id),req.body,rules.revision(req.get('If-Match')),req.user)));
+router.put('/:id/student-id',handler(req=>player.changeStudentId(rules.id(req.params.id),req.body,rules.revision(req.get('If-Match')),req.user)));
+router.put('/:id/gender',handler(req=>player.setGender(rules.id(req.params.id),req.body,rules.revision(req.get('If-Match')),req.user)));
+module.exports=router;

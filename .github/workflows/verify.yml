@@ -1,0 +1,113 @@
+name: Verify campus football website
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    name: Tests, migration, build and browser acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-isolated-mysql-only
+          MYSQL_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ci-isolated-mysql-only
+      DB_NAME: campus_football_course
+      TEST_DB_NAME: campus_football_course_ci_test
+      JWT_SECRET: ci-only-not-a-production-secret-9f5a6c28
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            player-frontend/package-lock.json
+      - name: Protect previously published migrations
+        run: node backend/scripts/checkMigrationHistory.js
+        env:
+          MIGRATION_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD' }}
+      - name: Install backend dependencies
+        run: npm ci --include=dev
+        working-directory: backend
+      - name: Install frontend dependencies
+        run: npm ci --include=dev
+        working-directory: frontend
+      - name: Install player frontend dependencies
+        run: npm ci --include=dev
+        working-directory: player-frontend
+      - name: Install deployment verification tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx mysql-client openssl
+      - name: Backend units, real MySQL API tests, upgrade and restore integrity
+        run: npm run test:unit && npm run test:ops && npm run test:migration:competitions && npm run test:migration:imports && npm run test:migration:supervision && npm run test:migration:team-auto-review && npm run test:migration:referee-grades && npm run test:migration:colleges
+        working-directory: backend
+      - name: Frontend unit tests
+        run: npm test
+        working-directory: frontend
+      - name: Build production frontend
+        run: npm run build
+        working-directory: frontend
+      - name: Player frontend tests and production build
+        run: npm test && npm run build
+        working-directory: player-frontend
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Browser acceptance on isolated database
+        run: npm run test:e2e
+        working-directory: frontend
+      - name: Player and shared admin browser acceptance
+        run: npm run test:e2e
+        working-directory: player-frontend
+      - name: Mobile player, captain, manager and admin workflow acceptance
+        run: npm run test:e2e:mobile
+        working-directory: player-frontend
+      - name: Dual-site Nginx configuration and production asset checks
+        run: |
+          node backend/scripts/checkDualSite.js --nginx=/usr/sbin/nginx
+          node backend/scripts/checkProductionSite.js --nginx=/usr/sbin/nginx --openssl=/usr/bin/openssl
+          for script in deploy/*.sh; do bash -n "$script"; done
+      - name: Audit backend dependencies
+        run: npm audit --audit-level=moderate
+        working-directory: backend
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=moderate
+        working-directory: frontend
+      - name: Audit player frontend dependencies
+        run: npm audit --audit-level=moderate
+        working-directory: player-frontend
+      - name: Preserve browser diagnostics (test-only data)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-test-diagnostics
+          retention-days: 7
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            player-frontend/playwright-report/
+            player-frontend/test-results/

@@ -1,0 +1,30 @@
+const express=require('express');
+const {requirePlayer,requireAdmin}=require('../middleware/auth');
+const rules=require('../utils/playerRules');
+const service=require('../services/playerRegistrationService');
+const settings=require('../services/playerSeasonSettingsService');
+const upload=require('../utils/playerAcademicUpload');
+const {safeLog}=require('../utils/safeLog');
+function handle(work,status=200){return async(req,res)=>{try{res.status(status).json({success:true,data:await work(req)});}catch(e){if(!e.isBusinessError)safeLog('player_workflow_failed',e);res.status(e.isBusinessError?e.statusCode||400:500).json({success:false,code:e.isBusinessError?e.code:'INTERNAL_ERROR',message:e.isBusinessError?e.message:'操作失败，请稍后再试'});}};}
+const version=req=>rules.revision(req.get('If-Match'));
+async function sendFile(req,res){try{const item=await service.file(req.params.id,req.params.fileId,req.user);res.set({'Cache-Control':'private, no-store','Content-Type':item.mime,'X-Content-Type-Options':'nosniff'});await new Promise((resolve,reject)=>res.sendFile(item.path,error=>error?reject(error):resolve()));}catch(e){if(!res.headersSent)res.status(e.isBusinessError?e.statusCode:e.code==='ENOENT'?404:500).json({success:false,message:e.isBusinessError?e.message:'材料文件不可用，请联系管理员'});}}
+const player=express.Router();player.use(['/season-registration','/notifications'],requirePlayer);
+player.get('/season-registration/current',handle(req=>service.current(req.user.id)));
+player.get('/season-registration/history',handle(async req=>(await require('../utils/playerWorkflow').sql(require('../db'),'SELECT r.id,s.season_name,s.is_active FROM player_season_registrations r JOIN seasons s ON s.id=r.season_id WHERE r.player_id=? ORDER BY s.start_date DESC,r.id DESC',[req.user.id]))[0]));
+player.post('/season-registration/submit',upload.middleware,handle(req=>service.submit(req.user,req.body,version(req),req.get('Idempotency-Key'),req.file,req.academicImage),201));
+player.post('/season-registration/withdraw',handle(req=>service.withdraw(req.user,req.body,version(req))));
+player.get('/season-registration/:id',handle(req=>service.detail(req.params.id,req.user)));
+player.get('/season-registration/:id/files/:fileId',sendFile);
+player.get('/notifications',handle(req=>service.notices(req.user)));
+player.put('/notifications/:id/read',handle(req=>service.readNotice(req.params.id,req.user)));
+const admin=express.Router();admin.use(['/season-settings','/season-registrations'],requireAdmin);
+admin.get('/season-settings/:seasonId',handle(req=>settings.read(req.params.seasonId)));
+admin.put('/season-settings/:seasonId',handle(req=>settings.save(rules.id(req.params.seasonId),req.body,version(req),req.user)));
+admin.get('/season-settings/:seasonId/history',handle(req=>settings.history(rules.id(req.params.seasonId))));
+admin.get('/season-settings/:seasonId/cleanup',handle(req=>require('../services/playerMaterialCleanupService').preview(req.params.seasonId)));
+admin.post('/season-settings/:seasonId/cleanup',handle(req=>require('../services/playerMaterialCleanupService').cleanup(req.params.seasonId,req.user,version(req),req.body)));
+admin.get('/season-registrations',handle(req=>service.list(req.query)));
+admin.get('/season-registrations/:id',handle(req=>service.detail(req.params.id,req.user)));
+for(const operation of ['approve','return','revoke'])admin.post(`/season-registrations/:id/${operation}`,handle(req=>service.review(rules.id(req.params.id),operation,req.body,version(req),req.user)));
+admin.get('/season-registrations/:id/files/:fileId',sendFile);
+module.exports={player,admin};

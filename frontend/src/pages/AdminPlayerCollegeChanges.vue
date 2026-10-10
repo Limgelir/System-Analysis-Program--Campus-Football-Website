@@ -1,0 +1,41 @@
+<template>
+  <div class="college-admin">
+    <header><RouterLink to="/admin-dashboard">← 返回管理员工作台</RouterLink><h1>球员修改学院审核</h1><p>核对原学院、新学院及1系统截图。通过后更新球员账号学院，用于后续球队自动审核；已有学籍、球队和比赛记录保留。</p></header>
+    <p v-if="error" class="notice error" role="alert">{{ error }}</p><p v-if="success" class="notice success" role="status">{{ success }}</p>
+    <form class="filters" @submit.prevent="search"><label>申请状态<select v-model="status" :disabled="saving"><option value="">全部状态</option><option v-for="(label,key) in labels" :key="key" :value="key">{{ label }}</option></select></label><label>搜索球员<input v-model="query" placeholder="姓名、学号、原学院或新学院" maxlength="100" :disabled="saving"></label><button :disabled="saving || loading">查询</button></form>
+    <div class="summary"><span v-for="(label,key) in labels" :key="key">{{ label }} <strong>{{ summary[key] || 0 }}</strong></span></div>
+    <div class="table-wrap"><table><thead><tr><th>球员</th><th>学号</th><th>原学院</th><th>新学院</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td>{{ item.account.name }}</td><td>{{ item.account.student_id }}</td><td>{{ item.old_college || '未填写' }}</td><td>{{ item.new_college }}</td><td>{{ labels[item.status] }}{{ item.account.is_active ? '' : ' · 账号已停用' }}</td><td>{{ time(item.submitted_at) }}</td><td><button :disabled="saving" @click="open(item.id)">查看申请</button></td></tr><tr v-if="!items.length"><td colspan="7">{{ loading ? '正在加载…' : '暂无符合条件的申请' }}</td></tr></tbody></table></div>
+    <div class="pagination"><span>共 {{ pagination.total }} 份申请 · 第 {{ page }} 页</span><button :disabled="saving || loading || page <= 1" @click="page--; load()">上一页</button><button :disabled="saving || loading || page >= pagination.total_pages" @click="page++; load()">下一页</button></div>
+    <section v-if="detail" class="detail">
+      <div class="detail-heading"><h2>{{ detail.account.name }} · 学院修改申请</h2><div><button :disabled="saving" @click="open(detail.change.id)">刷新申请详情</button><button :disabled="saving" @click="close">关闭详情</button></div></div>
+      <p>当前状态：<strong>{{ labels[detail.change.status] }}</strong></p>
+      <div class="comparison"><div><h3>申请变更</h3><p>提交时姓名：{{ detail.change.profile_snapshot.name }}</p><p>提交时学号：{{ detail.change.profile_snapshot.student_id }}</p><p>原学院：<strong>{{ detail.change.old_college || '未填写' }}</strong></p><p>新学院：<strong>{{ detail.change.new_college }}</strong></p></div><div><h3>账号最新资料</h3><p>姓名：{{ detail.account.name }}</p><p>学号：{{ detail.account.student_id }}</p><p>当前学院：{{ detail.account.college || '未填写' }}</p><p v-if="!detail.account.is_active" class="error">账号已停用，不能通过审核。</p></div></div>
+      <p v-if="detail.change.review_reason" class="notice">审核说明：{{ detail.change.review_reason }}</p>
+      <h3>本次申请的1系统信息截图</h3><PlayerAcademicImage :source-path="`/player-admin/college-changes/${detail.change.id}/image`"/>
+      <div v-if="detail.change.status === 'pending'" ref="reviewElement" v-draft="{ value: reason, resetKey: detail.change.id + ':' + detail.change.revision }" class="review-controls"><label>审核说明／退回理由<textarea v-model="reason" rows="3" maxlength="500" placeholder="退回时必须填写理由" :disabled="saving"></textarea></label><p>通过可不填说明；退回后球员需重新上传截图申请。</p><div class="actions"><button class="primary" :disabled="saving || !detail.account.is_active" @click="review('approve')">通过学院修改</button><button :disabled="saving || !reason.trim()" @click="review('return')">退回学院修改</button></div></div>
+      <details open class="history"><summary>申请操作记录</summary><ol><li v-for="event in detail.events" :key="event.id"><strong>{{ operations[event.operation] }}</strong> · {{ time(event.created_at) }} · {{ event.actor_admin_id ? '管理员 #' + event.actor_admin_id : '球员本人' }}<p v-if="event.reason">{{ event.reason }}</p></li></ol></details>
+    </section>
+  </div>
+</template>
+<script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import api from '../api/http'
+import PlayerAcademicImage from '../components/PlayerAcademicImage.vue'
+import { confirmDraftLeave } from '../../../shared-ui/interaction.js'
+const status=ref('pending'),query=ref(''),page=ref(1),items=ref([]),summary=ref({}),pagination=ref({total:0,total_pages:0}),detail=ref(null),reason=ref(''),reviewElement=ref(null),loading=ref(false),saving=ref(false),error=ref(''),success=ref('')
+const labels={pending:'待审核',approved:'已通过',returned:'已退回',withdrawn:'已撤回'},operations={submitted:'提交申请',approved:'审核通过',returned:'退回补正',withdrawn:'本人撤回'}
+const time=value=>value?new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'—'
+let sequence=0,detailSequence=0
+const fail=e=>{error.value=e.response?.data?.message||'操作失败，请重试'}
+function assign(value){detail.value=value;reason.value=''}
+async function load(){const n=++sequence;loading.value=true;try{const r=await api.get('/player-admin/college-changes',{params:{status:status.value,q:query.value,page:page.value}});if(n===sequence){items.value=r.data.items;summary.value=r.data.summary;pagination.value=r.data.pagination}}catch(e){if(n===sequence)fail(e)}finally{if(n===sequence)loading.value=false}}
+function resetDetail(){detailSequence++;detail.value=null;reason.value='';success.value=''}
+function search(){if(!confirmDraftLeave(reviewElement.value))return;resetDetail();page.value=1;error.value='';load()}
+function close(){if(!confirmDraftLeave(reviewElement.value))return;resetDetail()}
+async function open(id){if(!confirmDraftLeave(reviewElement.value))return;resetDetail();const n=++detailSequence;error.value='';try{const r=await api.get(`/player-admin/college-changes/${id}`);if(n===detailSequence)assign(r.data)}catch(e){if(n===detailSequence)fail(e)}}
+async function review(action){saving.value=true;error.value='';success.value='';try{const body={reason:reason.value};if(action==='approve')body.account_revision=detail.value.account.revision;const r=await api.post(`/player-admin/college-changes/${detail.value.change.id}/${action}`,body,{headers:{'If-Match':String(detail.value.change.revision)}});assign(r.data);success.value=action==='approve'?'学院修改已通过，球员账号学院已更新，站内提示已发送。':'学院修改已退回，退回理由已通知球员。';await load()}catch(e){fail(e)}finally{saving.value=false}}
+onMounted(load);onBeforeUnmount(()=>{sequence++;detailSequence++})
+</script>
+<style scoped>
+.college-admin{max-width:1200px;margin:auto;padding:28px 24px;color:#193451}.college-admin header{margin-bottom:24px}.college-admin h1{font-size:28px}.college-admin p{line-height:1.7;overflow-wrap:anywhere;white-space:pre-wrap}.filters,.summary,.pagination,.actions{display:flex;align-items:end;gap:16px;flex-wrap:wrap;margin:20px 0}.filters label{flex:1;min-width:200px}.college-admin label{display:block;font-weight:600}.college-admin input,.college-admin select,.college-admin textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:10px;font:inherit;border:1px solid #c8d5e4;border-radius:6px}.college-admin button{padding:10px 14px;border:1px solid #c8d5e4;border-radius:6px;background:white;color:#174b7d;cursor:pointer;font:inherit}.college-admin button:disabled{opacity:.5;cursor:not-allowed}.college-admin button.primary{background:#155e9b;color:white}.table-wrap{overflow-x:auto}.college-admin table{width:100%;border-collapse:collapse;min-width:850px}.college-admin td,.college-admin th{padding:13px 10px;text-align:left;border-bottom:1px solid #e0e7f0}.college-admin td{overflow-wrap:anywhere;max-width:220px}.college-admin th{background:#f3f6fa}.notice{padding:12px 16px;background:#f2f6fb;border-radius:6px}.error{color:#a3292d}.success{color:#21613c}.detail{background:white;border:1px solid #dae3ed;border-radius:10px;padding:24px;margin-top:24px}.detail-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.detail-heading>div{display:flex;gap:8px;flex-wrap:wrap}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:20px;background:#f3f7fb;border-radius:8px}.comparison p{margin:6px 0}.review-controls{margin-top:24px}.history{margin-top:24px}.history li{padding:12px 0;border-top:1px solid #e0e7f0}.history p{margin:6px 0}@media(max-width:650px){.college-admin{padding:20px 14px}.detail{padding:16px}.detail-heading{align-items:flex-start;flex-direction:column}.comparison{grid-template-columns:1fr;gap:12px}.filters label{min-width:100%}.summary{gap:12px}}
+</style>

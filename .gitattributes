@@ -1,0 +1,5 @@
+# 统一在 Git 中保存文本换行，兼容 Windows 和 Linux。
+* text=auto
+# Linux 部署脚本不能被 Windows checkout 转为 CRLF。
+*.sh text eol=lf
+deploy/systemd/* text eol=lf

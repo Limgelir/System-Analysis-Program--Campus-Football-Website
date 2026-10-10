@@ -1,0 +1,3 @@
+import { defineConfig } from '@playwright/test'
+if (process.env.REFWEB_E2E !== '1' || process.env.NODE_ENV !== 'test' || !/^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.E2E_BASE_URL || '') || !process.env.DB_NAME?.endsWith('_test')) throw Error('请使用 npm run test:e2e，在隔离数据库中运行')
+export default defineConfig({ testDir: './tests/e2e', timeout: 60000, expect: { timeout: 10000 }, workers: 1, fullyParallel: false, forbidOnly: !!process.env.CI, retries: 0, reporter: [['list'], ['html', {open:'never'}]], use: { baseURL: process.env.E2E_BASE_URL, browserName: 'chromium', viewport: { width: 1440, height: 1000 }, trace:'retain-on-failure', screenshot: 'only-on-failure', actionTimeout: 15000 }, outputDir: 'test-results' })

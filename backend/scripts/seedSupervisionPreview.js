@@ -1,0 +1,20 @@
+const fs=require('fs'),path=require('path');
+module.exports=async({api,refs,season,comp,teams,password,cache,base,playerPort})=>{
+ await api('/referee/admin/add',{student_id:'LOCAL-UNREGISTERED',name:'验收未注册裁判',grade:'三级',target_level:'二级',level_promoted_at:'2025-01-01',match_types:['足协杯']});
+ const external=[];for(let i=0;i<3;i++)external.push(await api('/officials/external',{name:['验收助理裁判员一','验收助理裁判员二','验收外部裁判监督'][i]}));
+ const day=n=>new Date(Date.now()+8*3600000+n*86400000).toISOString().slice(0,10),matches=[];
+ const common={match_type:comp.league_type,team_a_id:teams[0],team_b_id:teams[1],match_date:day(0),match_time:'00:00',venue:'嘉定人草',main_referee_id:refs[0].id,assistant1_id:'external:'+external[0].id,assistant2_id:'external:'+external[1].id,fourth_official_id:refs[1].id};
+ const create=async(field_order,label,extra={})=>{const m=await api('/schedule',{...common,field_order,...extra});matches.push({id:m.id,field_order,label,url:base+'/admin-schedule/'+m.id});return m};
+ await create('N1','无裁判监督，裁判员报告可直接完成',{supervisor_required:false});
+ await create('D1','裁判员兼任裁判监督',{supervisor_id:refs[0].id});
+ await create('D2','第四官员兼任裁判监督',{supervisor_id:refs[1].id});
+ await create('D3','非系统助理裁判员兼任裁判监督，管理员代填',{supervisor_id:'external:'+external[0].id});
+ await create('E1','独立非系统裁判监督，管理员代填',{supervisor_id:'external:'+external[2].id});
+ const late=await create('L1','裁判员草稿已开始，可补选裁判监督或取消裁判监督');
+ await api('/report/schedule/'+late.id+'/main',{home_score:0,away_score:0,stats:[{role:'main',running_distance_m:5000}]},'POST',refs[0].token);
+ const locked=await create('L2','裁判监督草稿已开始，裁判监督设置已锁定',{supervisor_id:refs[1].id});
+ await api('/report/schedule/'+locked.id+'/supervisor',{reviews:['main','assistant1','assistant2','fourth'].map(target_role=>({target_role,score:8,advice:'本地验收草稿'}))},'POST',refs[1].token);
+ await create('F1','未来无裁判监督比赛，报名意向不含裁判监督',{supervisor_required:false,match_date:day(1),match_time:'17:35'});
+ const credentials={warning:'仅本地随机数据库，均为虚构验收资料。',admin:{username:'competition-admin',password,url:base+'/admin-login'},referees:refs.map((r,i)=>({student_id:'LOCAL-REF-'+(i+1),name:i?'验收裁判监督/第四官员':'验收裁判员',password,url:base+'/referee-login'})),season,matches,admin_url:base,player_url:`http://127.0.0.1:${playerPort}`};
+ const file=path.join(cache,'supervision-preview.seed');fs.writeFileSync(file,JSON.stringify(credentials,null,2),{mode:0o600});console.log('裁判监督验收环境已就绪：'+base+'；本地凭据：'+file);
+};

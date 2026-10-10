@@ -1,0 +1,34 @@
+[Unit]
+Description=TJ RefWeb backend API
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=refweb
+Group=refweb
+WorkingDirectory=/opt/tj-refweb/backend
+EnvironmentFile=/etc/tj-refweb/backend.env
+Environment=NODE_OPTIONS=--max-old-space-size=384
+ExecStart=/usr/bin/node /opt/tj-refweb/backend/server.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+UMask=0077
+StandardOutput=append:/var/log/tj-refweb/application.log
+StandardError=append:/var/log/tj-refweb/error.log
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/tj-refweb/uploads
+
+[Install]
+WantedBy=multi-user.target

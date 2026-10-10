@@ -1,0 +1,74 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pnpm-lock.yaml
+yarn.lock
+
+# Local environment secrets
+.env
+.env.*
+!.env.example
+!.env.test.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime data
+pids/
+backups/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+*.lcov
+
+# Build output
+dist/
+dist-ssr/
+build/
+# Locally generated documents and exports
+/output/
+.cache/
+/tmp/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Uploads (由后端保存的上传文件)
+uploads/
+
+# MySQL dumps / 临时 SQL
+*.sql
+*.sql.gz
+db/*.sql
+!db/final_schema.sql
+
+# NPM local
+.npm/
+.eslintcache
+*.bak
+
+# Vite / Vue specific
+.vite/
+frontend/node_modules/
+frontend/dist/
+
+# Logs from tools
+*.log
+*.log.*

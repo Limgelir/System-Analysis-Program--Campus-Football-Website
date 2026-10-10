@@ -1,0 +1,163 @@
+/* Shared local layout; cards.css optionally adds adjustable frosted card surfaces. */
+.ui-app:has(.studio-shell) { --primary:#275f92; --primary-hover:#184b7b; --brand:#234b70; --ink:#172e49; --muted:#657d94; --canvas:#f2f6fb; --soft:#edf3f9; --line:#dce6ef; --radius:18px; --shadow:0 3px 16px #16395704; background:var(--canvas); }
+.studio-shell { min-height:100dvh; padding:14px 18px 104px; background:radial-gradient(ellipse at 96% 0,#a8caf270,transparent 43%),radial-gradient(ellipse at 12% 32%,#d2e9ee70,transparent 42%),linear-gradient(120deg,#edf3fa,#f8fbfd); }
+.studio-shell .studio-glass { background:#f9fcff; border:1px solid #ffffffb8; box-shadow:inset 0 1px 0 #fff,inset 0 -1px 0 #abc4df55,0 8px 30px #23477010; background-clip:padding-box; }
+html[data-local-appearance="frosted"] .studio-shell .studio-glass { background:rgb(255 255 255 / var(--local-glass-tint,8%)); -webkit-backdrop-filter:blur(var(--local-glass-blur,3px)) saturate(135%); backdrop-filter:blur(var(--local-glass-blur,3px)) saturate(135%); }
+.studio-shell .studio-topbar { position:sticky; top:14px; z-index:100; max-width:1460px; margin:auto; display:flex; align-items:center; gap:24px; min-height:74px; padding:13px 22px; border-radius:24px; }
+.ui-app .studio-brand { display:flex; align-items:center; gap:11px; color:var(--ink); font-size:16px; font-weight:650; line-height:1.4; text-decoration:none; flex-shrink:0; }
+.studio-brand img { width:38px; height:38px; object-fit:contain; }
+.studio-brand small { display:block; font-size:10px; font-weight:400; color:var(--muted); letter-spacing:2px; margin-top:3px; }
+.studio-account { margin-left:auto; }
+.studio-account:empty { display:none; }
+.studio-shell .studio-account :is(button,a) { font-size:12px; min-height:38px; padding:8px 14px; background:#ffffff60; border-color:#ffffffa0; border-radius:20px; }
+.studio-shell .studio-menu { display:none; }
+.studio-workspace { display:grid; grid-template-columns:190px minmax(0,1fr); align-items:start; gap:34px; max-width:1400px; margin:32px auto 0; padding:0 18px; }
+.studio-shell:not(.studio-has-navigation) .studio-workspace { display:block; }
+.studio-sidebar { position:sticky; top:120px; max-height:calc(100dvh - 150px); overflow:auto; scrollbar-width:thin; padding:6px 2px 16px; }
+.studio-sidebar section { margin-bottom:27px; }
+.studio-nav-label { font-size:10px; letter-spacing:1.3px; color:#8193a5; margin:0 12px 10px; }
+.ui-app .studio-sidebar a { display:flex; align-items:center; gap:12px; min-height:44px; padding:10px 12px; margin:3px 0; font-size:12px; font-weight:500; border-radius:12px; color:#617b94; text-decoration:none; }
+.studio-icon { flex-shrink:0; }
+.studio-sidebar a:hover { background:#e5eef6; }
+.studio-sidebar a.is-current { background:#dfebf6; color:#174b7e; }
+.studio-content { min-width:0; min-height:68vh; max-width:1120px; width:100%; }
+.studio-content:focus { outline:none; }
+.studio-shell .studio-dock { position:fixed; bottom:max(20px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:5px; width:max-content; max-width:calc(100% - 24px); padding:7px; border-radius:32px; z-index:200; }
+.ui-app .studio-dock a { display:flex; gap:9px; align-items:center; min-height:46px; padding:10px 19px; font-size:13px; font-weight:600; color:var(--ink); border-radius:25px; text-decoration:none; }
+.studio-dock a:first-child { position:relative; margin-right:5px; }
+.studio-dock a:first-child:after { content:''; position:absolute; width:1px; height:18px; background:#a8bbcc66; right:-5px; }
+.studio-dock a:hover,.studio-dock a.is-current { background:#e0ebf685; }
+.ui-app .studio-dock a.dock-primary { color:white; background:#275f92; box-shadow:inset 0 1px 0 #ffffff38; }
+.studio-dock a.dock-primary:hover { background:#184b7b; }
+
+/* Compact page headings keep attention on the real account and match data. */
+.studio-shell .studio-hero { padding:0; margin:0 0 20px; }
+.studio-shell .studio-hero h1 { font-size:26px; font-weight:650; margin:0; line-height:1.4; }
+.studio-shell .studio-hero-meta { color:var(--muted); font-size:13px; line-height:1.6; margin:8px 0 0; overflow-wrap:anywhere; }
+.studio-hero-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:18px; }
+.studio-shell .studio-hero-actions :is(button,a) { font-size:12px; padding:8px 13px; min-height:38px; }
+.studio-shell .studio-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:22px 0; border-block:1px solid #ccdce880; margin:12px 0 26px; }
+.studio-stats>div { padding:0 25px; border-right:1px solid #ccdce890; }
+.studio-stats>div:first-child { padding-left:8px; }
+.studio-stats>div:last-child { border:0; }
+.studio-stats span { display:block; color:#758b9e; font-size:11px; }
+.studio-stats strong { display:block; font-size:30px; line-height:1.5; font-weight:500; color:#244765; font-variant-numeric:tabular-nums; }
+.studio-stats strong.studio-stat-text { font-size:18px; padding:10px 0 8px; color:#3a756c; }
+.studio-shell .studio-dashboard-toolbar { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.studio-shell .studio-dashboard-toolbar button { min-height:34px; background:transparent; border:0; font-size:11px; padding:6px 10px; color:#6c8298; }
+.studio-shell .studio-match { padding:18px 21px; background:white; border:1px solid #dfe7ef; border-radius:17px; margin-bottom:13px; box-shadow:0 2px 8px #16395703; }
+.studio-match-meta,.studio-match-bottom { display:flex; align-items:center; justify-content:space-between; gap:12px; color:#71889f; font-size:11px; }
+.studio-match-meta>span:last-child { background:#eef4fc; padding:3px 8px; border-radius:6px; }
+.studio-match-teams { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:18px; padding:24px 0; font-weight:600; font-size:16px; }
+.studio-match-teams>span:last-child { text-align:right; }
+.studio-match-teams strong { font-size:22px; font-weight:500; white-space:nowrap; color:#315574; }
+.studio-match-bottom { border-top:1px solid #edf1f6; padding-top:10px; }
+.studio-match-bottom>div { display:flex; flex-wrap:wrap; gap:10px; }
+.studio-shell .studio-match-bottom button { border:0; min-height:36px; padding:6px 4px; font-size:12px; color:#315d87; white-space:nowrap; }
+
+/* Shared content treatment also reaches tables, forms, detail and public pages. */
+.ui-app .studio-shell :is(.page-body,.main-content,.content,.signup-page>main,.external-main,.admin-team-page) { padding:0; max-width:none; }
+.ui-app .studio-shell :is(.header-bar,.admin-header,.signup-page>header) { padding:7px 0 25px; margin:0; max-width:none; }
+.ui-app .studio-shell :is(.header-bar .title,.referee-header-title) { font-size:27px; font-weight:650; }
+.ui-app .studio-shell h1 { font-weight:650; }
+.ui-app .studio-shell h2 { font-size:20px; font-weight:600; }
+.ui-app .studio-shell h3 { font-size:16px; font-weight:600; }
+.ui-app .studio-shell :is(button,.primary,.secondary,.ui-quick-links a) { border-radius:22px; font-size:13px; font-weight:500; }
+.ui-app .studio-shell :is(input,select,textarea) { border-radius:12px; border-color:#cbd9e6; }
+.ui-app .studio-shell :is(.card,.info-card,.entry-card,.tips-card,.registration-card,.registration-overview,.report-section,.match-item,:where(.signup-page) article,.workbench,.list-card,.trend-card,.summary-card) { border-radius:18px; border:1px solid #dce6ef; box-shadow:0 3px 16px #16395704; background:white; }
+.ui-app .studio-shell .summary-card.primary-card { background:var(--brand); }
+.ui-app .studio-shell :is(.card,.info-card,.entry-card,.tips-card,.registration-card,.registration-overview,.report-section,.workbench) { padding:24px; }
+.ui-app .studio-shell :is(.records-section,.registration-overview) { padding:0; background:transparent; border:0; box-shadow:none; }
+.studio-shell .records-section { margin-top:30px; }
+.ui-app .studio-shell :is(.section-head,.overview-head) { margin-bottom:18px; }
+.studio-shell .section-head h2 { margin:0 0 6px; }
+.studio-shell .section-desc { font-size:12px; }
+.studio-shell .overview-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:0; border-block:1px solid #ccdce880; padding:8px 0; margin-bottom:26px; }
+.ui-app .studio-shell .overview-stat { background:transparent; border:0; border-right:1px solid #ccdce880; border-radius:0; padding:13px 20px; }
+.studio-shell .overview-stat:nth-child(5n) { border-right:0; }
+.studio-shell .overview-stat span { font-size:11px; color:#758b9e; }
+.studio-shell .overview-stat strong { font-size:26px; font-weight:500; }
+.studio-shell .entry-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:26px; }
+.ui-app .studio-shell .entry-card { gap:10px; }
+.ui-app .studio-shell .entry-title { font-size:16px; font-weight:600; }
+.ui-app .studio-shell .entry-desc { font-size:12px; line-height:1.9; color:#758a9d; }
+.studio-shell .entry-card button { background:#edf3fa; color:#2f6088; border-color:transparent; font-size:12px; }
+.studio-shell .workbench .tiles button { border-radius:14px; }
+.studio-shell .tips-card { margin-top:24px; font-size:13px; }
+.studio-shell .registration-card { margin-bottom:28px; }
+.ui-app .studio-shell .registration-card { background:#faffff; border-color:#d7e6e5; padding:20px; }
+.studio-registration-summary { display:flex; align-items:center; gap:14px; }
+.studio-registration-icon { display:grid; place-items:center; flex-shrink:0; width:36px; height:36px; border-radius:50%; color:#3e7c6b; background:#e6f1ed; }
+.studio-shell .studio-registration-summary h2 { font-size:14px; margin:0; }
+.studio-registration-summary p { font-size:11px; color:#7a9395; margin:5px 0 0; }
+.studio-shell .studio-registration-summary button { margin-left:auto; background:transparent; border:0; white-space:nowrap; font-size:11px; color:#688198; padding:8px; }
+.studio-shell #registration-details { padding-top:22px; }
+.studio-shell .records-section h2 small { font-size:11px; background:#e2ebf5; padding:3px 7px; border-radius:6px; vertical-align:middle; color:#5b7792; margin-left:5px; }
+.studio-shell .registration-card .card-head { margin-bottom:16px; }
+.studio-shell .registration-card .season-summary { background:transparent; padding:0 0 15px; border:0; }
+.studio-shell .registration-card .status-panel { border-radius:13px; padding:16px; }
+.studio-shell .registration-card :is(.status-description,.status-meta,.season-code,.season-dates) { font-size:12px; }
+.ui-app .studio-shell .season-card { display:flex; justify-content:space-between; align-items:center; gap:20px; background:#faffff; border-color:#d7e6e5; }
+.studio-shell .season-card :is(h2,p) { margin:6px 0; }
+.studio-shell .season-card p { font-size:12px; }
+.studio-shell .season-card .registration-link { margin-top:12px; }
+.studio-shell .ui-quick-links { margin:0 0 24px; }
+.studio-shell .college-notice { font-size:12px; line-height:1.8; padding:12px 14px; background:#eef5fb; border:1px solid #d6e4f1; border-radius:13px; margin:14px 0; color:#56728b; }
+.studio-shell .college-notice button { font-size:11px; min-height:32px; padding:6px 10px; margin-left:6px; }
+.studio-shell .my-teams,.studio-shell .notifications { margin-top:24px; }
+.ui-app .studio-shell :is(.table-wrapper,.table-wrap,.table-scroll,.team-table-wrap) { border-radius:14px; }
+.ui-app .studio-shell th { background:#f1f6fa; font-size:12px; }
+.ui-app .studio-shell td { font-size:13px; }
+.studio-shell .referee-auth-page { background:transparent; min-height:0; padding:24px 0; }
+.ui-app .studio-shell :is(.referee-auth-card,.auth-card) { border:1px solid #dce6ef; border-radius:24px; box-shadow:0 15px 55px #2347700a; }
+.ui-app .studio-shell .auth-layout { display:block; max-width:460px; margin:24px auto; padding:0; }
+.studio-shell :is(#assignments,#season-registration) { scroll-margin-top:115px; }
+.studio-shell .report-notice { bottom:100px; }
+
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) { html[data-local-appearance="frosted"] .studio-shell .studio-glass { background:#f8fbff; } }
+@media(max-width:1100px) { .studio-workspace { gap:24px; grid-template-columns:170px minmax(0,1fr); padding-inline:4px; } .studio-shell .entry-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:900px) {
+  .studio-shell { padding:10px 12px 104px; }
+  .studio-shell .studio-topbar { top:10px; padding:12px 15px; min-height:68px; gap:12px; }
+  .studio-shell .studio-menu { display:flex; align-items:center; gap:6px; padding:7px 10px; min-height:38px; background:#ffffff60; border-color:#ffffffa0; font-size:12px; margin-left:auto; }
+  .studio-workspace { display:block; margin-top:24px; padding:0 6px; }
+  .studio-sidebar { display:none; position:static; max-height:none; padding:16px; background:#f5f9fc; border:1px solid #dce6ef; border-radius:20px; margin-bottom:25px; }
+  .studio-sidebar.is-open { display:block; }
+  .studio-sidebar nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .studio-sidebar section { margin:0; }
+  .studio-content { max-width:none; }
+  .ui-app .studio-shell .header-actions { width:auto; }
+}
+@media(max-width:600px) {
+  .studio-brand img { width:30px; height:30px; }
+  .ui-app .studio-brand { font-size:13px; gap:8px; }
+  .studio-brand small { font-size:9px; letter-spacing:1px; }
+  .studio-shell .studio-account :is(button,a) { font-size:10px; padding:7px 9px; }
+  .studio-shell .studio-topbar { gap:8px; border-radius:20px; }
+  .studio-shell .studio-menu { padding:7px; }
+  .studio-menu .studio-icon { width:17px; }
+  .studio-shell .studio-hero h1 { font-size:22px; }
+  .studio-stats>div { padding:0 12px; }
+  .studio-stats strong { font-size:26px; }
+  .studio-stats strong.studio-stat-text { font-size:14px; }
+  .studio-stats span { font-size:10px; }
+  .studio-shell .studio-dock { bottom:max(12px,env(safe-area-inset-bottom)); padding:6px; gap:2px; }
+  .ui-app .studio-dock a { padding:10px 12px; font-size:11px; gap:6px; min-height:44px; }
+  .studio-dock .studio-icon { width:17px; height:17px; }
+  .studio-shell .entry-grid { grid-template-columns:1fr; }
+  .studio-shell .overview-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .studio-shell .overview-stat:nth-child(5n) { border-right:1px solid #ccdce880; }
+  .studio-shell .overview-stat:nth-child(2n) { border-right:0; }
+  .ui-app .studio-shell :is(.card,.info-card,.entry-card,.tips-card,.registration-card,.report-section,.workbench) { padding:18px; }
+  .studio-shell .studio-match { padding:16px; }
+  .studio-registration-summary { flex-wrap:wrap; gap:10px; }
+  .studio-registration-summary>div { flex:1; }
+  .studio-match-teams { font-size:13px; gap:9px; padding:20px 0; }
+  .studio-match-teams strong { font-size:18px; }
+  .studio-match-meta,.studio-match-bottom { font-size:10px; }
+  .studio-shell .season-card { align-items:flex-start; flex-wrap:wrap; }
+  .studio-shell { padding-bottom:148px; }
+  .local-appearance-tools { bottom:max(88px,calc(env(safe-area-inset-bottom) + 78px)) !important; }
+  .local-appearance-panel { max-height:calc(100dvh - 165px); }
+}
+@media print { .studio-shell { padding:0; background:white; } .studio-topbar,.studio-sidebar,.studio-dock { display:none !important; } .studio-workspace { display:block; padding:0; margin:0; } }

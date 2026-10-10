@@ -1,0 +1,11 @@
+[Unit]
+Description=Run TJ RefWeb backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Shanghai
+Persistent=true
+AccuracySec=1min
+Unit=tj-refweb-backup.service
+
+[Install]
+WantedBy=timers.target

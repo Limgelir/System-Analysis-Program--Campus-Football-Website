@@ -1,0 +1,10 @@
+# 仅用于已确认的独立 Ubuntu/MySQL 8 新主机；安装到 /etc/mysql/mysql.conf.d/tj-refweb.cnf。
+# 先检查其它 .cnf 是否覆盖同名参数，首次重启 MySQL 后核对 SHOW VARIABLES。
+[mysqld]
+bind-address = 127.0.0.1
+mysqlx-bind-address = 127.0.0.1
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+default-time-zone = '+08:00'
+innodb-buffer-pool-size = 512M
+max-connections = 50
