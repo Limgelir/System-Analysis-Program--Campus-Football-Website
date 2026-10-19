@@ -20,10 +20,11 @@
       <div class="card">
         <h3>赛程基础信息</h3>
         <div class="grid">
+          <div><span class="label">裁判安排：</span>{{schedule.futsal?'五人制':'普通'}}</div>
           <div><span class="label">赛程ID：</span>{{ schedule.id }}</div>
           <div><span class="label">比赛类型：</span>{{ schedule.match_type || '-' }}</div>
           <div><span class="label">比赛场地：</span>{{ venueText(schedule) }}</div>
-          <div><span class="label">比赛日期：</span>{{ formatDate(schedule.match_date) }} · {{ displayMatchTime(schedule.match_time) }}</div>
+          <div><span class="label">比赛日期：</span>{{ formatDate(schedule.match_date) }} · {{ displayMatchTime(schedule.match_time, schedule.match_end_time) }}</div>
           <div><span class="label">场序：</span>{{ schedule.field_order || '-' }}</div>
           <div><span class="label">对阵：</span>{{ schedule.team_a_name_snapshot }} vs {{ schedule.team_b_name_snapshot }}</div>
           <div><span class="label">查看身份：</span>{{ viewerRoleLabel }}</div>
@@ -41,13 +42,13 @@
         <div class="form-row">
           <div class="form-group"><label for="revision-target">操作对象</label>
             <select id="revision-target" v-model="revisionTarget" :disabled="Boolean(revisionSection) || writeBusy">
-              <option value="main">裁判员区内容</option><option v-if="supervisorRequired" value="supervisor">裁判监督区内容</option><option value="image">第四官员记录单图片</option>
+              <option value="main">裁判员区内容</option><option v-if="supervisorRequired" value="supervisor">裁判监督区内容</option><option value="image">{{ recordSheetLabel }}图片</option>
             </select>
           </div>
           <div class="form-group"><label for="revision-reason">原因（必填，最多 500 字）</label><textarea id="revision-reason" v-model="revisionReason" maxlength="500" :disabled="writeBusy" /></div>
         </div>
         <p v-if="revisionError" class="revision-error" role="alert">{{ revisionError }}</p>
-        <p v-if="revisionSection" class="readonly-banner">正在修订{{ revisionTarget === 'supervisor' ? '裁判监督区' : revisionTarget === 'image' ? '第四官员记录单图片' : '裁判员区' }}：请在下方对应区域修改并保存；取消不会修改数据库。</p>
+        <p v-if="revisionSection" class="readonly-banner">正在修订{{ revisionTarget === 'supervisor' ? '裁判监督区' : revisionTarget === 'image' ? recordSheetLabel + "图片" : '裁判员区' }}：请在下方对应区域修改并保存；取消不会修改数据库。</p>
         <div v-if="revisionConfirmation" class="revision-confirmation" role="alertdialog" aria-labelledby="revision-confirm-title">
           <h4 id="revision-confirm-title">确认报告操作</h4>
           <p>{{ revisionConfirmationText }}</p>
@@ -105,29 +106,39 @@
         </div>
       </div>
 
-      <ReportHistoryPanel :key="`${schedule.id}-${sections.main?.revision}-${sections.supervisor?.revision}`" :schedule-id="schedule.id" :supervisor-required="supervisorRequired" />
+      <ReportHistoryPanel :key="`${schedule.id}-${sections.main?.revision}-${sections.supervisor?.revision}`" :schedule-id="schedule.id" :supervisor-required="supervisorRequired" :has-supervisor-history="Number(sections.supervisor?.revision)>0" />
 
       <div class="card">
         <div class="section-header">
           <h3>{{ canEditMainSection ? '裁判员填写区' : '裁判员区（只读）' }}</h3>
           <div v-if="canEditMainSection" class="mode-chip editable">可编辑</div>
         </div>
-        <div class="section-tip">裁判员区包含比分、执法数据、进球说明、红黄牌明细与第四官员记录单图片。</div>
+        <div class="section-tip">裁判员区包含比分、执法数据、进球说明、红黄牌明细与{{ recordSheetLabel }}图片。</div>
 
         <fieldset class="readonly-fieldset" :disabled="!canEditMainSection || writeBusy">
+          <div class="form-group">
+            <label for="report-forfeit-side">弃权方</label>
+            <select id="report-forfeit-side" :value="form.forfeit_side" @change="handleForfeitChange">
+              <option value="none">正常比赛（无弃权）</option>
+              <option value="home">主队弃权 · {{ schedule.team_a_name_snapshot }}</option>
+              <option value="away">客队弃权 · {{ schedule.team_b_name_snapshot }}</option>
+              <option value="both">双方弃权</option>
+            </select>
+          </div>
+          <p v-if="isForfeit" class="status-note warn" role="status">{{ forfeitLabel }}，以下为判定比分，不计入任何球员进球。{{ form.forfeit_side === 'both' ? '请手动填写双方比分。' : '默认弃权方 0 分、对方 3 分，可按实际判定修改。' }}</p>
           <div v-if="scoreError" class="alert error score-error" role="alert">{{ scoreError }}；已恢复为上次有效比分，请核对后继续。</div>
           <div class="form-row">
             <div class="form-group">
-              <label>主队得分</label>
-              <input type="number" min="0" max="30" step="1" v-model.number="form.home_score" @input="handleScoreChange" />
+              <label for="report-home-score">{{ isForfeit ? '主队判定比分' : '主队得分' }}</label>
+              <input id="report-home-score" type="number" min="0" max="30" step="1" v-model.number="form.home_score" @input="handleScoreChange" />
             </div>
             <div class="form-group">
-              <label>客队得分</label>
-              <input type="number" min="0" max="30" step="1" v-model.number="form.away_score" @input="handleScoreChange" />
+              <label for="report-away-score">{{ isForfeit ? '客队判定比分' : '客队得分' }}</label>
+              <input id="report-away-score" type="number" min="0" max="30" step="1" v-model.number="form.away_score" @input="handleScoreChange" />
             </div>
           </div>
 
-          <div class="form-row">
+          <div v-if="!isForfeit" class="form-row">
             <div class="form-group">
               <label>主队点球战得分</label>
               <input type="number" min="0" max="30" step="1" v-model.number="form.home_penalty_score" @input="handlePenaltyScoreChange('home_penalty_score', '主队点球大战得分')" />
@@ -138,35 +149,35 @@
             </div>
           </div>
 
-          <div class="subsection">
-            <h4>裁判员执法数据</h4>
+          <div v-for="statRole in (schedule.futsal?['main','second']:['main'])" :key="statRole" class="subsection">
+            <h4>{{statRole==='main'?'裁判员':'第二裁判员'}}执法数据</h4>
             <div class="form-row">
-              <div class="form-group"><label>跑动距离(m)</label><input type="number" min="0" v-model.number="form.stats.main.running_distance_m" /></div>
-              <div class="form-group"><label>最大心率</label><input type="number" min="0" v-model.number="form.stats.main.max_heart_rate" /></div>
+              <div class="form-group"><label>跑动距离(m)</label><input type="number" min="0" v-model.number="form.stats[statRole].running_distance_m" /></div>
+              <div class="form-group"><label>最大心率</label><input type="number" min="0" v-model.number="form.stats[statRole].max_heart_rate" /></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label>冲刺次数</label><input type="number" min="0" v-model.number="form.stats.main.sprint_count" /></div>
-              <div class="form-group"><label>高强度跑动(m)</label><input type="number" min="0" v-model.number="form.stats.main.high_intensity_distance_m" /></div>
+              <div class="form-group"><label>冲刺次数</label><input type="number" min="0" v-model.number="form.stats[statRole].sprint_count" /></div>
+              <div class="form-group"><label>高强度跑动(m)</label><input type="number" min="0" v-model.number="form.stats[statRole].high_intensity_distance_m" /></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label>平均心率</label><input type="number" min="0" v-model.number="form.stats.main.avg_heart_rate" /></div>
-              <div class="form-group"><label>平均速度(m/s)</label><input type="number" min="0" step="0.1" v-model.number="form.stats.main.avg_speed_mps" /></div>
+              <div class="form-group"><label>平均心率</label><input type="number" min="0" v-model.number="form.stats[statRole].avg_heart_rate" /></div>
+              <div class="form-group"><label>平均速度(m/s)</label><input type="number" min="0" step="0.1" v-model.number="form.stats[statRole].avg_speed_mps" /></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label>红牌张数</label><input type="number" min="0" v-model.number="form.stats.main.red_card_count" /></div>
-              <div class="form-group"><label>红牌准确率%</label><input type="number" min="0" max="100" step="0.1" v-model.number="form.stats.main.red_card_accuracy" /></div>
+              <div class="form-group"><label>红牌张数</label><input type="number" min="0" v-model.number="form.stats[statRole].red_card_count" /></div>
+              <div class="form-group"><label>红牌准确率%</label><input type="number" min="0" max="100" step="0.1" v-model.number="form.stats[statRole].red_card_accuracy" /></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label>黄牌张数</label><input type="number" min="0" v-model.number="form.stats.main.yellow_card_count" /></div>
-              <div class="form-group"><label>黄牌准确率%</label><input type="number" min="0" max="100" step="0.1" v-model.number="form.stats.main.yellow_card_accuracy" /></div>
+              <div class="form-group"><label>黄牌张数</label><input type="number" min="0" v-model.number="form.stats[statRole].yellow_card_count" /></div>
+              <div class="form-group"><label>黄牌准确率%</label><input type="number" min="0" max="100" step="0.1" v-model.number="form.stats[statRole].yellow_card_accuracy" /></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label>点球判罚次数</label><input type="number" min="0" v-model.number="form.stats.main.penalty_count" /></div>
-              <div class="form-group"><label>点球准确率%</label><input type="number" min="0" max="100" step="0.1" v-model.number="form.stats.main.penalty_accuracy" /></div>
+              <div class="form-group"><label>点球判罚次数</label><input type="number" min="0" v-model.number="form.stats[statRole].penalty_count" /></div>
+              <div class="form-group"><label>点球准确率%</label><input type="number" min="0" max="100" step="0.1" v-model.number="form.stats[statRole].penalty_accuracy" /></div>
             </div>
           </div>
 
-          <div class="subsection">
+          <div v-if="!schedule.futsal" class="subsection">
             <h4>助理裁判员数据（可选）</h4>
             <div class="form-row">
               <div class="form-group"><label>第一助理裁判员 越位举旗</label><input type="number" min="0" v-model.number="form.stats.assistant1.offside_flag_count" /></div>
@@ -178,7 +189,11 @@
             </div>
           </div>
 
-          <div class="subsection">
+          <div v-if="isForfeit" class="subsection">
+            <h4>进球说明</h4>
+            <p class="tip">弃权判定比分不生成进球记录，不填写点球大战比分。</p>
+          </div>
+          <div v-else class="subsection">
             <h4>进球说明（按比分自动生成）</h4>
             <div class="tip">进球说明数量由比分自动决定；修改比分时，如会影响已填内容，系统会先提示确认。</div>
             <div v-if="rosterWarning" class="status-note warn">{{ rosterWarning }}</div>
@@ -328,21 +343,21 @@
         </fieldset>
 
         <div class="subsection">
-          <h4>比赛第四官员记录单</h4>
-          <div class="tip">第四官员记录单图片单独上传；管理员与只读查看者可预览与放大查看。</div>
+          <h4>{{ recordSheetLabel }}</h4>
+          <div class="tip">{{ recordSheetLabel }}图片单独上传；管理员与只读查看者可预览与放大查看。</div>
           <div v-if="report.fourth_official_image_path" class="upload-preview">
-            <div class="upload-meta">已上传文件：{{ fourthOfficialImageName || '第四官员记录单图片' }}</div>
+            <div class="upload-meta">已上传文件：{{ fourthOfficialImageName || recordSheetLabel + "图片" }}</div>
             <div class="preview-actions">
               <button type="button" class="btn-secondary" @click="openImagePreview">点击放大</button>
               <a :href="fourthOfficialImageUrl" target="_blank" rel="noopener noreferrer" class="preview-link">打开原图</a>
             </div>
-            <img :src="fourthOfficialImageUrl" alt="第四官员记录单预览" class="preview-image" @click="openImagePreview" />
+            <img :src="fourthOfficialImageUrl" :alt="recordSheetLabel + '预览'" class="preview-image" @click="openImagePreview" />
           </div>
-          <div v-else class="upload-empty">当前尚未上传第四官员记录单图片。</div>
+          <div v-else class="upload-empty">当前尚未上传{{ recordSheetLabel }}图片。</div>
 
           <div v-if="canEditImage" class="upload-actions">
             <div v-if="imageRemovalPending" class="revision-confirmation" role="alertdialog" aria-label="确认移除当前图片">
-              <p>确认从当前报告移除第四官员记录单图片吗？历史版本中的图片仍保留。</p>
+              <p>确认从当前报告移除{{ recordSheetLabel }}图片吗？历史版本中的图片仍保留。</p>
               <button class="btn-primary" @click="removeFourthOfficialImage(true)" :disabled="fourthOfficialRemoving">确认移除当前图片</button>
               <button class="btn-secondary" @click="imageRemovalPending = false" :disabled="fourthOfficialRemoving">保留当前图片</button>
             </div>
@@ -356,8 +371,8 @@
             />
             <div v-if="selectedFourthOfficialFileName" class="upload-meta">待上传：{{ selectedFourthOfficialFileName }}</div>
             <div class="form-actions">
-              <button type="button" class="btn-secondary" @click="uploadFourthOfficialImage" :disabled="writeBusy || !selectedFourthOfficialFile">{{ report.fourth_official_image_path ? '替换第四官员记录单' : '上传第四官员记录单' }}</button>
-              <button type="button" class="btn-secondary" @click="removeFourthOfficialImage" :disabled="writeBusy || !report.fourth_official_image_path">删除第四官员记录单</button>
+              <button type="button" class="btn-secondary" @click="uploadFourthOfficialImage" :disabled="writeBusy || !selectedFourthOfficialFile">{{ report.fourth_official_image_path ? "替换" + recordSheetLabel : "上传" + recordSheetLabel }}</button>
+              <button type="button" class="btn-secondary" @click="removeFourthOfficialImage" :disabled="writeBusy || !report.fourth_official_image_path">删除{{ recordSheetLabel }}</button>
             </div>
           </div>
         </div>
@@ -406,11 +421,11 @@
     <div v-if="imagePreviewVisible" class="image-modal" @click.self="closeImagePreview">
       <div class="image-modal-card">
         <div class="image-modal-header">
-          <div class="image-modal-title">第四官员记录单图片预览</div>
+          <div class="image-modal-title">{{ recordSheetLabel }}图片预览</div>
           <button type="button" class="btn-secondary" @click="closeImagePreview">关闭</button>
         </div>
         <div class="image-modal-body">
-          <img :src="fourthOfficialImageUrl" alt="第四官员记录单大图预览" class="image-modal-preview" />
+          <img :src="fourthOfficialImageUrl" :alt="recordSheetLabel + '大图预览'" class="image-modal-preview" />
         </div>
         <div class="image-modal-footer">
           <a :href="fourthOfficialImageUrl" target="_blank" rel="noopener noreferrer" class="preview-link">打开原图</a>
@@ -421,6 +436,7 @@
 </template>
 
 <script>
+import { rolesFor } from '../utils/officialRoles.js'
 import MatchDiscipline from '../components/MatchDiscipline.vue'
 import { venueText } from '../utils/matchSignup.js'
 import { displayMatchTime } from '../utils/matchTime.js'
@@ -507,12 +523,14 @@ export default {
       rosterWarning: '',
       scoreError: '',
       form: {
+        forfeit_side: 'none',
         home_score: 0,
         away_score: 0,
         home_penalty_score: 0,
         away_penalty_score: 0,
         stats: {
           main: buildEmptyMainStats(),
+          second: buildEmptyMainStats(),
           assistant1: buildEmptyAssistantStats(),
           assistant2: buildEmptyAssistantStats()
         },
@@ -552,9 +570,12 @@ export default {
     }
   },
   computed: {
+    recordSheetLabel(){return this.schedule?.futsal?'比赛记录单':'第四官员记录单'},
+    isForfeit() { return this.form.forfeit_side !== 'none' },
+    forfeitLabel() { return ({ home: '主队弃权', away: '客队弃权', both: '双方弃权' })[this.form.forfeit_side] || '' },
     writeBusy() { return this.saving || this.fourthOfficialUploading || this.fourthOfficialRemoving || Boolean(this.revisionConfirmation) || this.imageRemovalPending },
     revisionConfirmationText() {
-      const area = this.revisionTarget === 'supervisor' ? '裁判监督区' : this.revisionTarget === 'image' ? '第四官员记录单图片' : '裁判员区'
+      const area = this.revisionTarget === 'supervisor' ? '裁判监督区' : this.revisionTarget === 'image' ? this.recordSheetLabel + "图片" : '裁判员区'
       if (this.revisionConfirmation === 'begin') return `进入${area}修订将重新加载已保存内容，未保存的普通编辑不会保留。是否继续？`
       if (this.revisionConfirmation === 'cancel') return '取消本次尚未保存的修订并刷新？已经成功保存的历史操作不会撤销。'
       return `确认仅退回${area}给原系统裁判？原内容和版本保留，另一分区、比赛及岗位仍锁定。原因：${this.revisionReason}`
@@ -656,7 +677,7 @@ export default {
   },
   methods: {
     venueText(value) { return venueText(value) },
-    displayMatchTime(value) { return displayMatchTime(value) },
+    displayMatchTime(value, endTime) { return displayMatchTime(value, endTime) },
     showReportNotice(message, error = false) { this.reportNotice = message; this.reportNoticeError = error },
     submissionSummary(value) {
       const submission = typeof value === 'string' ? JSON.parse(value) : value
@@ -717,7 +738,7 @@ export default {
       else if (action === 'cancel') await this.cancelAdminRevision(true)
       else if (action === 'return') await this.returnSelectedSection(true)
     },
-    actorOperationLabel(operation) { return ({save_main:'保存裁判员区',submit_main:'提交裁判员区',upload_image:'上传第四官员记录单',remove_image:'删除第四官员记录单',save_supervisor:'保存裁判监督区',submit_supervisor:'提交裁判监督区'})[operation] || operation },
+    actorOperationLabel(operation) { return ({save_main:'保存裁判员区',submit_main:'提交裁判员区',upload_image:"上传" + this.recordSheetLabel,remove_image:"删除" + this.recordSheetLabel,save_supervisor:'保存裁判监督区',submit_supervisor:'提交裁判监督区'})[operation] || operation },
     nextGoalSlotKey() {
       const key = `goal-slot-${this.goalSlotSeed}`
       this.goalSlotSeed += 1
@@ -833,7 +854,7 @@ export default {
         this.scoreError = `正常比分必须是 0 到 ${MAX_MATCH_SCORE} 的整数`
         return false
       }
-      const { goals, removedGoals } = this.buildGoalsForScores(nextHomeScore, nextAwayScore)
+      const { goals, removedGoals } = this.isForfeit ? { goals: [], removedGoals: this.form.goals } : this.buildGoalsForScores(nextHomeScore, nextAwayScore)
       const removedMeaningfulGoals = removedGoals.filter(goal => this.goalHasMeaningfulContent(goal))
 
       if (!skipConfirm && removedMeaningfulGoals.length > 0) {
@@ -862,6 +883,12 @@ export default {
         return
       }
 
+      // 弃权判定比分允许逐个输入，保存时统一校验；不生成进球填写项。
+      if (this.isForfeit) {
+        this.scoreError = ''
+        return
+      }
+
       const nextHomeScore = parseBoundedScore(this.form.home_score)
       const nextAwayScore = parseBoundedScore(this.form.away_score)
 
@@ -884,6 +911,30 @@ export default {
         this.form.home_score = this.scoreSnapshot.home
         this.form.away_score = this.scoreSnapshot.away
       }
+    },
+    handleForfeitChange(event) {
+      const next = event.target.value
+      if (!this.canEditMainSection || this.writeBusy || !['none', 'home', 'away', 'both'].includes(next)) {
+        event.target.value = this.form.forfeit_side
+        return
+      }
+      if (next === this.form.forfeit_side) return
+      if (next !== 'none' && !window.confirm('切换弃权方将清空全部进球记录和点球大战比分，并重设判定比分。红黄牌、执法数据、四官单及监督报告保留。是否继续？')) {
+        event.target.value = this.form.forfeit_side
+        return
+      }
+      this.form.forfeit_side = next
+      this.scoreError = ''
+      if (next === 'none') {
+        this.applyGoalsForScores(parseBoundedScore(this.form.home_score) ?? 0, parseBoundedScore(this.form.away_score) ?? 0, { skipConfirm: true })
+        return
+      }
+      this.form.goals = []
+      this.form.home_penalty_score = 0
+      this.form.away_penalty_score = 0
+      this.form.home_score = next === 'both' ? null : next === 'home' ? 0 : 3
+      this.form.away_score = next === 'both' ? null : next === 'away' ? 0 : 3
+      this.scoreSnapshot = { home: this.form.home_score, away: this.form.away_score, homePenalty: 0, awayPenalty: 0 }
     },
     handlePenaltyScoreChange(field, label) {
       const snapshotKey = field === 'home_penalty_score' ? 'homePenalty' : 'awayPenalty'
@@ -973,6 +1024,7 @@ export default {
         this.viewerRoleCodes = Array.isArray(payload.viewer_role_codes) ? payload.viewer_role_codes : [this.viewerRoleCode]
         this.viewerPermissions = viewer_permissions || schedule?.viewer_permissions || buildDefaultViewerPermissions(this.viewerRoleCode)
 
+        this.form.forfeit_side = report?.forfeit_side ?? 'none'
         this.form.home_score = report?.home_score ?? 0
         this.form.away_score = report?.away_score ?? 0
         this.form.home_penalty_score = report?.home_penalty_score ?? 0
@@ -981,10 +1033,11 @@ export default {
         this.scoreSnapshot.awayPenalty = parseBoundedScore(this.form.away_penalty_score) ?? 0
 
         this.form.stats.main = { ...buildEmptyMainStats(), ...(stats.find(item => item.role === 'main') || {}) }
+        this.form.stats.second = { ...buildEmptyMainStats(), ...(stats.find(item => item.role === 'second') || {}) }
         this.form.stats.assistant1 = { ...buildEmptyAssistantStats(), ...(stats.find(item => item.role === 'assistant1') || {}) }
         this.form.stats.assistant2 = { ...buildEmptyAssistantStats(), ...(stats.find(item => item.role === 'assistant2') || {}) }
 
-        this.form.reviews = ['main', 'assistant1', 'assistant2', ...(schedule.fourth_required?['fourth']:[])].map(role => {
+        this.form.reviews = rolesFor(schedule).filter(r=>r.code!=='supervisor').map(r=>r.code).map(role => {
           const existing = reviews.find(item => item.target_role === role)
           return {
             target_role: role,
@@ -1017,7 +1070,7 @@ export default {
         const blob = await fileAPI.getFourthOfficialImage(this.schedule.id)
         this.fourthOfficialImageObjectUrl = URL.createObjectURL(blob)
       } catch (error) {
-        console.error('第四官员记录单预览加载失败:', error)
+        console.error(this.recordSheetLabel + "预览加载失败:", error)
       }
     },
     formatDate(dateString) {
@@ -1050,12 +1103,12 @@ export default {
     },
     async uploadFourthOfficialImage() {
       if (!this.canEditImage) {
-        this.showReportNotice('当前身份不可上传第四官员记录单', true)
+        this.showReportNotice("当前身份不可上传" + this.recordSheetLabel, true)
         return
       }
 
       if (!this.selectedFourthOfficialFile) {
-        this.showReportNotice('请先选择要上传的第四官员记录单图片', true)
+        this.showReportNotice("请先选择要上传的" + this.recordSheetLabel + "图片", true)
         return
       }
 
@@ -1071,23 +1124,23 @@ export default {
         const hadExistingImage = Boolean(this.report?.fourth_official_image_path)
         await (this.revisionSection === 'image' ? reportAPI.reviseImage : this.isProxyMain ? reportAPI.uploadProxyImage : reportAPI.uploadFourthOfficialImage)(this.schedule.id, formData,this.sections.main.revision)
         this.revisionSection = null
-        this.showReportNotice(hadExistingImage ? '第四官员记录单替换成功' : '第四官员记录单上传成功')
+        this.showReportNotice(hadExistingImage ? this.recordSheetLabel + "替换成功" : this.recordSheetLabel + "上传成功")
         this.resetFourthOfficialFileSelection()
         await this.loadReport()
       } catch (err) {
-        this.showReportNotice('第四官员记录单上传失败: ' + extractErrorMessage(err, '未知错误'), true)
+        this.showReportNotice(this.recordSheetLabel + "上传失败: " + extractErrorMessage(err, '未知错误'), true)
       } finally {
         this.fourthOfficialUploading = false
       }
     },
     async removeFourthOfficialImage(confirmed = false) {
       if (!this.canEditImage) {
-        this.showReportNotice('当前身份不可删除第四官员记录单', true)
+        this.showReportNotice("当前身份不可删除" + this.recordSheetLabel, true)
         return
       }
 
       if (!this.report?.fourth_official_image_path) {
-        this.showReportNotice('当前没有已上传的第四官员记录单图片', true)
+        this.showReportNotice("当前没有已上传的" + this.recordSheetLabel + "图片", true)
         return
       }
 
@@ -1100,11 +1153,11 @@ export default {
         if (this.revisionSection === 'image') await reportAPI.removeRevisionImage(this.schedule.id,this.revisionReason.trim(),this.sections.main.revision)
         else await (this.isProxyMain ? reportAPI.deleteProxyImage : reportAPI.deleteFourthOfficialImage)(this.schedule.id,this.sections.main.revision)
         this.revisionSection = null
-        this.showReportNotice('当前第四官员记录单已移除，历史图片保留')
+        this.showReportNotice("当前" + this.recordSheetLabel + "已移除，历史图片保留")
         this.resetFourthOfficialFileSelection()
         await this.loadReport()
       } catch (err) {
-        this.showReportNotice('第四官员记录单删除失败: ' + extractErrorMessage(err, '未知错误'), true)
+        this.showReportNotice(this.recordSheetLabel + "删除失败: " + extractErrorMessage(err, '未知错误'), true)
       } finally {
         this.fourthOfficialRemoving = false
       }
@@ -1115,17 +1168,17 @@ export default {
       const homePenaltyScore = parseBoundedScore(this.form.home_penalty_score)
       const awayPenaltyScore = parseBoundedScore(this.form.away_penalty_score)
       if ([homeScore, awayScore, homePenaltyScore, awayPenaltyScore].some(score => score === null)) {
-        throw new Error(`正常比分和点球大战比分必须是 0 到 ${MAX_MATCH_SCORE} 的整数`)
+        throw new Error(this.isForfeit ? `请填写双方弃权判定比分，必须是 0 到 ${MAX_MATCH_SCORE} 的整数` : `正常比分和点球大战比分必须是 0 到 ${MAX_MATCH_SCORE} 的整数`)
       }
       return {
+        forfeit_side: this.form.forfeit_side,
         home_score: homeScore,
         away_score: awayScore,
         home_penalty_score: homePenaltyScore,
         away_penalty_score: awayPenaltyScore,
         stats: [
           { role: 'main', ...this.form.stats.main },
-          { role: 'assistant1', ...this.form.stats.assistant1 },
-          { role: 'assistant2', ...this.form.stats.assistant2 }
+          ...(this.schedule.futsal?[{role:'second',...this.form.stats.second}]:[{ role: 'assistant1', ...this.form.stats.assistant1 },{ role: 'assistant2', ...this.form.stats.assistant2 }])
         ],
         cards: this.form.cards.map(card => ({
           team_id: card.team_id,
@@ -1274,6 +1327,8 @@ export default {
     getRefereeNameForRole(role) {
       const roleMap = {
         main: { name: this.schedule?.main_referee_name, label: '裁判员' },
+        second: {name:this.schedule?.second_referee_name,label:'第二裁判员'},
+        timekeeper: {name:this.schedule?.timekeeper_name,label:'计时员'},
         assistant1: { name: this.schedule?.assistant1_name, label: '第一助理裁判员' },
         assistant2: { name: this.schedule?.assistant2_name, label: '第二助理裁判员' },
         fourth: { name: this.schedule?.fourth_official_name, label: '第四官员' },

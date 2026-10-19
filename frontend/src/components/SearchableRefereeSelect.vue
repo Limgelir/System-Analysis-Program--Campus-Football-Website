@@ -71,7 +71,7 @@ export default {
     createOpen:false,newName:'',newNote:'',creating:false,createError:''
   } },
   computed: {
-    roleCode() { return ({main_referee_id:'main',assistant1_id:'assistant1',assistant2_id:'assistant2',fourth_official_id:'fourth',supervisor_id:'supervisor'})[this.roleField] },
+    roleCode() { return ({main_referee_id:'main',assistant1_id:'assistant1',assistant2_id:'assistant2',fourth_official_id:'fourth',second_referee_id:'second',timekeeper_id:'timekeeper',supervisor_id:'supervisor'})[this.roleField] },
     selectedDisplay() {
       if (!this.modelValue) return null
       const item = [this.selectedItem, ...this.items].find(item => item && this.itemKey(item) === key(this.modelValue))

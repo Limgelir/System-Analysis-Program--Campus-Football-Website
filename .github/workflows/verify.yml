@@ -63,7 +63,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nginx mysql-client openssl
       - name: Backend units, real MySQL API tests, upgrade and restore integrity
-        run: npm run test:unit && npm run test:ops && npm run test:migration:competitions && npm run test:migration:imports && npm run test:migration:supervision && npm run test:migration:team-auto-review && npm run test:migration:referee-grades && npm run test:migration:colleges
+        run: npm run test:unit && npm run test:ops && npm run test:assignment-changes && npm run test:migration:competitions && npm run test:migration:imports && npm run test:migration:supervision && npm run test:migration:team-auto-review && npm run test:migration:referee-grades && npm run test:migration:colleges && npm run test:migration:futsal
         working-directory: backend
       - name: Frontend unit tests
         run: npm test

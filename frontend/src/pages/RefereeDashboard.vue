@@ -61,7 +61,7 @@
 
         <div v-else-if="$studioEnabled" class="studio-match-list">
           <article v-for="schedule in myAssignments" :key="schedule.id" class="studio-match">
-            <div class="studio-match-meta"><span>{{ formatMatchDate(schedule.match_date) }} / {{ displayMatchTime(schedule.match_time) }}</span><span>{{ schedule.match_type || '正式选派' }}</span></div>
+            <div class="studio-match-meta"><span>{{ formatMatchDate(schedule.match_date) }} / {{ displayMatchTime(schedule.match_time, schedule.match_end_time) }}</span><span>{{ schedule.match_type || '正式选派' }}</span></div>
             <div class="studio-match-teams"><span>{{ schedule.team_a_name_snapshot || schedule.teams?.home?.display_name || schedule.teams?.home?.name_snapshot || '主队' }}</span><strong>{{ schedule.score_display === '-' ? 'VS' : schedule.score_display }}</strong><span>{{ schedule.team_b_name_snapshot || schedule.teams?.away?.display_name || schedule.teams?.away?.name_snapshot || '客队' }}</span></div>
             <div class="studio-match-bottom"><div><span>{{ venueText(schedule) }}</span><span>{{ getRoleLabel(schedule) }}</span><span>场序 {{ schedule.field_order ?? '—' }}</span></div><button @click="goToReport(schedule)">报告详情 ↗</button></div>
             <p v-if="schedule.report_main_status === 'returned' || schedule.report_supervisor_status === 'returned'" class="password-warning">{{ schedule.report_main_status === 'returned' ? '裁判员区已退回' : '' }} {{ schedule.report_supervisor_status === 'returned' ? '裁判监督区已退回' : '' }}，进入报告查看原因</p>
@@ -81,7 +81,7 @@
             <div class="match-details">
               <span>身份：{{ getRoleLabel(schedule) }}</span>
               <span>场序：{{ schedule.field_order ?? '-' }}</span>
-              <span>日期：{{ formatMatchDate(schedule.match_date) }} · {{ displayMatchTime(schedule.match_time) }}</span>
+              <span>日期：{{ formatMatchDate(schedule.match_date) }} · {{ displayMatchTime(schedule.match_time, schedule.match_end_time) }}</span>
               <span>场地：{{ venueText(schedule) }}</span><span>类型：{{ schedule.match_type || '-' }}</span>
               <span v-if="schedule.report_main_status === 'returned' || schedule.report_supervisor_status === 'returned'" class="password-warning">{{ schedule.report_main_status === 'returned' ? '裁判员区已退回' : '' }} {{ schedule.report_supervisor_status === 'returned' ? '裁判监督区已退回' : '' }}，进入报告查看原因</span>
             </div>
@@ -161,6 +161,7 @@ const ROLE_LABEL_MAP = Object.freeze({
   assistant1: '第一助理裁判员',
   assistant2: '第二助理裁判员',
   fourth_official: '第四官员',
+  second: '第二裁判员', timekeeper: '计时员', second_referee_id:'第二裁判员',timekeeper_id:'计时员',
   supervisor: '裁判监督',
   main_referee_id: '裁判员',
   assistant1_id: '第一助理裁判员',
@@ -250,7 +251,7 @@ export default {
       this.$refs.seasonRegistration?.updateAccountGrade(data.grade)
     },
     venueText(value) { return venueText(value) },
-    displayMatchTime(value) { return displayMatchTime(value) },
+    displayMatchTime(value, endTime) { return displayMatchTime(value, endTime) },
     getRefereeId() {
       return this.refereeInfo?.id || this.refereeInfo?.referee_id || null
     },

@@ -18,12 +18,14 @@ async function review(id,user,operation,body,revision){
     if(body.review_token!==context.token)throw rules.businessError('球员资料、学籍资格、参队数量或赛事规则已变化，请刷新核对再审核',409,'TEAM_REVIEW_CHANGED');
     const before=await service.snapshot(c,a),now=w.chinaSql();
     if(operation==='return'){
+      const undo=await require('./teamOperationUndoService').capture(c,a,'returned');
       if(!Array.isArray(body.replaceable_member_ids)||!body.member_comments||typeof body.member_comments!=='object'||Array.isArray(body.member_comments))throw rules.businessError('请核对可替换球员和逐人说明');
       const ids=body.replaceable_member_ids.map(rules.id);if(new Set(ids).size!==ids.length||ids.some(id=>!rows.some(m=>m.id===id)))throw rules.businessError('只能指定本申请名单中的球员');
       const comments={};for(const [id,value]of Object.entries(body.member_comments)){if(!rows.some(m=>String(m.id)===id))throw rules.businessError('逐人说明不属于本申请');const text=r.text(value,'球员说明',500,true);if(text)comments[id]=text;}
       await c.execute("UPDATE team_applications SET status='returned',revision=revision+1,return_reason=?,return_snapshot=?,member_comments=?,reviewed_by_admin_id=?,reviewed_at=? WHERE id=?",[reason,JSON.stringify(before),JSON.stringify(comments),user.id,now,id]);
       const after=await service.application(c,id);await service.event(c,after,'returned',user,before,reason);
       for(const memberId of ids)await c.execute('INSERT INTO team_return_replacements (application_id,return_revision,member_id) VALUES (?,?,?)',[id,after.revision,memberId]);
+      await require('./teamOperationUndoService').store(c,id,undo);
       await service.notify(c,[a.manager_player_id,rows.find(m=>m.is_captain)?.player_id],`application:${id}:${after.revision}`,'team_returned',`“${a.team_name}”${a.league_type}报名已退回：${reason}`,a.season_id);
     }else{
       const {autoReview}=await service.checkSubmission(c,a);

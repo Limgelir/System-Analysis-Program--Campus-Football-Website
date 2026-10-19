@@ -15,5 +15,11 @@ test('同日按时间排序且待定最后，CSV包含时间而不猜测旧比�
   const items = [null,'18:00','00:00','17:35'].map((match_time, i) => ({id:i,match_date:'2026-12-31',match_time,field_order:i}))
   assert.deepEqual(items.toSorted(compareMatchSchedule).map(i=>i.match_time), ['00:00','17:35','18:00',null])
   const csv=scheduleCsv(items)
-  for(const text of ['开球时间','00:00','时间待定','17:35']) assert.ok(csv.includes(text))
+  for(const text of ['比赛时间','00:00','时间待定','17:35']) assert.ok(csv.includes(text))
+})
+test('比赛时间段完整展示，开赛排序仍使用开始时间', () => {
+  assert.equal(displayMatchTime('15:00:00','16:00:00'), '15:00-16:00')
+  assert.equal(matchTimeError('15:00-16:00'), '')
+  for (const value of ['15:00-15:00','23:00-01:00','15:00-24:00','15:00-16:00-17:00']) assert.ok(matchTimeError(value))
+  assert.ok(scheduleCsv([{match_time:'15:00',match_end_time:'16:00'}]).includes('15:00-16:00'))
 })

@@ -1,4 +1,5 @@
 import api from './http'
+import { replacementDescription, replacementNotice } from '../utils/scheduleReplacement.js'
 
 // 裁判 API
 export const refereeAPI = {
@@ -70,12 +71,13 @@ export const SCHEDULE_MUTATION_FIELDS = Object.freeze([
   'team_a_id',
   'team_b_id',
   'match_date',
-  'match_time', 'venue', 'venue_detail', 'schedule_revision', 'supervisor_required', 'fourth_required',
+  'match_time', 'match_end_time', 'venue', 'venue_detail', 'schedule_revision', 'supervisor_required', 'fourth_required', 'futsal', 'confirm_format_change',
   'field_order',
   'main_referee_id',
   'assistant1_id',
   'assistant2_id',
   'fourth_official_id',
+  'second_referee_id', 'timekeeper_id',
   'supervisor_id'
 ])
 
@@ -86,10 +88,12 @@ export const SCHEDULE_ROLE_FIELDS = Object.freeze([
   'assistant1_id',
   'assistant2_id',
   'fourth_official_id',
+  'second_referee_id', 'timekeeper_id',
   'supervisor_id'
 ])
 
 export const SCHEDULE_RESPONSE_FIELDS = Object.freeze([
+  'futsal','second_referee_id','second_referee_name','second_referee_name_snapshot','second_referee_id_selection','second_source_type','timekeeper_id','timekeeper_name','timekeeper_name_snapshot','timekeeper_id_selection','timekeeper_source_type',
   'id',
   'season_id',
   'season_code',
@@ -101,7 +105,7 @@ export const SCHEDULE_RESPONSE_FIELDS = Object.freeze([
   'team_a_name_snapshot',
   'team_b_name_snapshot',
   'match_date',
-  'match_time', 'venue', 'venue_detail', 'schedule_revision',
+  'match_time', 'match_end_time', 'venue', 'venue_detail', 'schedule_revision',
   'field_order',
   'main_referee_id',
   'main_referee_name_snapshot',
@@ -115,6 +119,7 @@ export const SCHEDULE_RESPONSE_FIELDS = Object.freeze([
   'fourth_official_id',
   'fourth_official_name_snapshot',
   'fourth_official_name',
+  'second_referee_id', 'timekeeper_id',
   'supervisor_id',
   'supervisor_required',
   'supervisor_locked', 'fourth_required', 'field_locked',
@@ -291,8 +296,11 @@ export function buildSchedulePayload(data = {}) {
     team_b_id: toNullableInt(data.team_b_id),
     match_date: toNullableString(data.match_date),
     ...(Object.hasOwn(data, 'match_time') ? { match_time: data.match_time || null } : {}),
+    ...(Object.hasOwn(data, 'match_end_time') ? { match_end_time: data.match_end_time || null } : {}),
     ...(Object.hasOwn(data,'venue')?{venue:data.venue||null,venue_detail:data.venue_detail||null}:{}),
     schedule_revision:data.schedule_revision,
+    ...(Object.hasOwn(data,'futsal')?{futsal:data.futsal}:{}),
+    confirm_format_change:data.confirm_format_change===true,
     field_order: toNullableString(data.field_order),
     ...Object.fromEntries(SCHEDULE_ROLE_FIELDS.filter(field=>Object.hasOwn(data,field)).map(field=>[field,toOfficialSelection(data[field])])),
     ...(Object.hasOwn(data, 'fourth_required') ? {fourth_required:data.fourth_required} : {}),
@@ -303,7 +311,7 @@ export function buildSchedulePayload(data = {}) {
 
 
 export function buildScheduleAssignmentPayload(data = {}) {
-  return { schedule_revision:data.schedule_revision,...(Object.hasOwn(data,'fourth_required')?{fourth_required:data.fourth_required}:{}),...(Object.hasOwn(data,'supervisor_required')?{supervisor_required:data.supervisor_required}:{}), ...Object.fromEntries(SCHEDULE_ROLE_FIELDS.filter(field => Object.hasOwn(data,field)).map(field => [field,toOfficialSelection(data[field])])), confirm_distinct_people: data.confirm_distinct_people === true }
+  return { schedule_revision:data.schedule_revision,...(Object.hasOwn(data,'futsal')?{futsal:data.futsal}:{}),confirm_format_change:data.confirm_format_change===true,...(Object.hasOwn(data,'fourth_required')?{fourth_required:data.fourth_required}:{}),...(Object.hasOwn(data,'supervisor_required')?{supervisor_required:data.supervisor_required}:{}), ...Object.fromEntries(SCHEDULE_ROLE_FIELDS.filter(field => Object.hasOwn(data,field)).map(field => [field,toOfficialSelection(data[field])])), confirm_distinct_people: data.confirm_distinct_people === true }
 }
 
 function toOfficialSelection(value) {
@@ -315,6 +323,18 @@ async function withNameConfirmation(write, payload) {
   try { return await write(payload) } catch (error) {
     if (error?.response?.data?.code !== 'OFFICIAL_SAME_NAME_CONFIRMATION_REQUIRED' || !window.confirm(`${error.response.data.message}\n确认这些同名记录是不同的自然人吗？`)) throw error
     return write({ ...payload, confirm_distinct_people: true })
+  }
+}
+
+async function createWithReplacement(data) {
+  try { return await withNameConfirmation(payload => api.post('/schedule', payload), buildSchedulePayload(data)) }
+  catch (error) {
+    if (error.response?.data?.code !== 'SCHEDULE_REPLACEMENT_CONFIRM_REQUIRED') throw error
+    const preview = error.response.data.data
+    if (!window.confirm(`是否替换已有赛程？\n\n${replacementDescription(preview.rows[0])}\n\n${replacementNotice}`)) {
+      throw Object.assign(new Error('已取消替换，原赛程保持不变'), { code: 'SCHEDULE_REPLACEMENT_CANCELLED' })
+    }
+    return api.post('/schedule/import-confirm', { preview: preview.preview, preview_token: preview.preview_token, confirm_replacements: preview.rows.map(row => row.replacement.id) })
   }
 }
 
@@ -366,6 +386,7 @@ export function normalizeScheduleRecord(record = {}) {
     team_b_name_snapshot: teamBNameSnapshot,
     match_date: record.match_date || null,
     match_time: record.match_time == null ? null : String(record.match_time).slice(0, 5),
+    match_end_time: record.match_end_time == null ? null : String(record.match_end_time).slice(0, 5),
     field_order: toNullableString(record.field_order),
     main_referee_id: toNullableInt(record.main_referee_id),
     main_referee_name_snapshot: toNullableString(record.main_referee_name_snapshot),
@@ -514,6 +535,7 @@ export function normalizeScheduleRecord(record = {}) {
       match_type: normalized.match_type,
       match_date: normalized.match_date,
       match_time: normalized.match_time,
+      match_end_time: normalized.match_end_time,
       field_order: normalized.field_order,
       display_teams: normalized.display_teams,
       created_at: normalized.created_at,
@@ -533,6 +555,7 @@ export function normalizeScheduleRecord(record = {}) {
       match_type: normalized.match_type,
       match_date: normalized.match_date,
       match_time: normalized.match_time,
+      match_end_time: normalized.match_end_time,
       display_teams: normalized.display_teams,
       teams: {
         home_name: teams.home.display_name,
@@ -571,6 +594,7 @@ function getScheduleListEndpoint(matchType) {
 
 // 队伍 API，支持当前名单与历史名单批次
 export const teamAPI = {
+  exportCurrentRoster(id) { return api.get(`/team/${id}/current-roster/export`, { responseType: 'blob' }) },
   getTeamsByLeague(leagueType) {
     return api.get('/team/list', { params: { league_type: leagueType } })
   },
@@ -745,7 +769,7 @@ export const adminAPI = {
     return api.get('/schedule/contract')
   },
   createSchedule(data) {
-    return withNameConfirmation(payload => api.post('/schedule', payload), buildSchedulePayload(data))
+    return createWithReplacement(data)
   },
   getSchedules() {
     return api.get('/schedule')
@@ -773,6 +797,10 @@ export const adminAPI = {
 
 // 赛程 API
 export const scheduleAPI = {
+  generateFourthOfficialSheet(id, template) { return api.get(`/schedule/${id}/fourth-official-sheet`, { params: { template }, responseType: 'blob' }) },
+  importTemplate() { return api.get('/schedule/import-template', { responseType: 'blob' }) },
+  previewImport(data) { return postMultipart('/schedule/import-preview', data) },
+  confirmImport(data) { return api.post('/schedule/import-confirm', data) },
   exportFiltered(params={}) { return api.get('/schedule/export',{params,responseType:'blob'}) },
   contractVersion: SCHEDULE_CONTRACT_VERSION,
   phase3Sealed: SCHEDULE_PHASE3_SEALED,
@@ -798,7 +826,7 @@ export const scheduleAPI = {
     return normalizeScheduleListResponse(payload)
   },
   create(data) {
-    return withNameConfirmation(payload => api.post('/schedule', payload), buildSchedulePayload(data))
+    return createWithReplacement(data)
   },
   getAll(params = {}) {
     return api.get('/schedule', { params })
@@ -818,6 +846,9 @@ export const scheduleAPI = {
   buildAssignmentPayload(data) {
     return buildScheduleAssignmentPayload(data)
   },
+  assignmentWarnings(id, data) {
+    return api.post(`/schedule/${id}/assignment-warnings`, data)
+  },
   assignReferees(id, data) {
     return withNameConfirmation(payload => api.put(`/schedule/${id}/assign-referees`, payload), buildScheduleAssignmentPayload(data))
   },
@@ -832,6 +863,7 @@ export const scheduleAPI = {
 
 export const matchSignupAPI = {
   board(params){return api.get('/match-signups/assignment-board',{params})},
+  exportDay(params){return api.get('/match-signups/assignment-board/export',{params,responseType:'blob'})},
   membership(id){return api.get('/match-signups/memberships/'+id)},
   saveMembership(id,data){return api.put('/match-signups/memberships/'+id,data)},
   list(params){return api.get('/match-signups',{params})},

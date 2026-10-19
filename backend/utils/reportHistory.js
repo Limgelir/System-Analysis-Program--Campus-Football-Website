@@ -35,14 +35,14 @@ async function readSectionState(c, reportId, section, forWrite = false) {
 async function captureSnapshot(c, reportId, section) {
   const prefix = sectionPrefix(section);
   const [[report]] = await c.execute('SELECT * FROM match_reports WHERE id=?',[reportId]);
-  const [[match]] = await c.execute("SELECT id,season_id,match_type,match_date,TIME_FORMAT(match_time,'%H:%i') AS match_time,venue,venue_detail,field_order,team_a_id,team_b_id,team_a_name_snapshot,team_b_name_snapshot FROM match_schedules WHERE id=?",[report.schedule_id]);
+  const [[match]] = await c.execute("SELECT id,season_id,futsal,match_type,match_date,TIME_FORMAT(match_time,'%H:%i') AS match_time,TIME_FORMAT(match_end_time,'%H:%i') AS match_end_time,venue,venue_detail,field_order,team_a_id,team_b_id,team_a_name_snapshot,team_b_name_snapshot FROM match_schedules WHERE id=?",[report.schedule_id]);
   const [officials] = await c.execute('SELECT id,role,source_type,referee_id,external_referee_id,name_snapshot FROM match_official_assignments WHERE schedule_id=? ORDER BY id',[report.schedule_id]);
   let data;
   if (section === 'main') {
     const [stats] = await c.execute('SELECT * FROM match_referee_stats WHERE report_id=? ORDER BY id',[reportId]);
     const [cards] = await c.execute('SELECT c.*,p.player_name,p.jersey_number AS player_jersey_number FROM match_cards c JOIN team_player p ON p.id=c.team_player_id WHERE c.report_id=? ORDER BY c.id',[reportId]);
     const [goals] = await c.execute('SELECT g.*,p.player_name,p.jersey_number AS player_jersey_number FROM match_goals g JOIN team_player p ON p.id=g.team_player_id WHERE g.report_id=? ORDER BY g.id',[reportId]);
-    data = {home_score:report.home_score,away_score:report.away_score,home_penalty_score:report.home_penalty_score,away_penalty_score:report.away_penalty_score,fourth_official_image_path:report.fourth_official_image_path,stats,cards,goals};
+    data = {forfeit_side:report.forfeit_side,home_score:report.home_score,away_score:report.away_score,home_penalty_score:report.home_penalty_score,away_penalty_score:report.away_penalty_score,fourth_official_image_path:report.fourth_official_image_path,stats,cards,goals};
   } else {
     const [reviews] = await c.execute('SELECT * FROM match_referee_reviews WHERE report_id=? ORDER BY id',[reportId]);
     data = {reviews};

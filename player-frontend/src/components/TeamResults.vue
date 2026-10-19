@@ -8,8 +8,9 @@
       <div class="schedule-tabs" role="group" aria-label="赛程分类"><button :aria-pressed="tab==='upcoming'" @click="tab='upcoming'">未来赛程</button><button :aria-pressed="tab==='history'" @click="tab='history'">历史比赛</button></div><p v-if="!visibleMatches.length">{{ tab==='upcoming'?'暂无待赛或待确认的比赛。':'暂无正式比赛结果。' }}</p>
       <p v-if="!data.matches.length" class="muted">本队暂无赛程。</p>
       <article v-for="m in visibleMatches" :key="m.id" class="match-card">
-        <p class="muted">{{ m.match_date }} · {{ m.match_time ?? '时间待定' }} · {{ m.venue==='其它'?m.venue_detail:m.venue||'场地待定' }} · {{ m.match_type }} · 场序 {{ m.field_order }}</p>
+        <p class="muted">{{ m.match_date }} · {{ m.match_time ? m.match_time + (m.match_end_time ? '-' + m.match_end_time : '') : '时间待定' }} · {{ m.venue==='其它'?m.venue_detail:m.venue||'场地待定' }} · {{ m.match_type }} · 场序 {{ m.field_order }}</p>
         <h3>{{ m.home_name }} <span class="score">{{ m.result ? `${m.result.home_score} : ${m.result.away_score}` : '待发布' }}</span> {{ m.away_name }}</h3>
+        <p v-if="m.result?.forfeit_side && m.result.forfeit_side !== 'none'" class="notice">{{ ({home:'主队弃权',away:'客队弃权',both:'双方弃权'})[m.result.forfeit_side] }} · 判定比分不计入球员进球。</p>
         <p v-if="m.status==='revising'" class="notice">修订中，当前展示上次正式结果。</p>
         <p v-if="m.result && (m.result.home_penalty_score > 0 || m.result.away_penalty_score > 0)">点球大战：{{ m.result.home_penalty_score }} : {{ m.result.away_penalty_score }}</p>
         <div v-if="tab==='upcoming' && m.discipline" class="suspensions"><h4>双方停赛名单</h4><p v-if="!m.discipline.configured">本赛事尚未设置停赛规则。</p><template v-else><p class="field-help">根据当前正式报告和未完成赛程顺序预计；改期、前场报告未提交或更正可能影响名单，请赛前刷新。</p><div v-for="team in [{id:m.team_a_id,name:m.home_name},{id:m.team_b_id,name:m.away_name}]" :key="team.id"><strong>{{ team.name }}</strong><p v-if="!m.discipline.suspensions.some(p=>p.team_id===team.id)">当前预计无停赛球员</p><p v-for="p in m.discipline.suspensions.filter(p=>p.team_id===team.id)" :key="p.key">{{ p.jersey_number }}号 {{ p.player_name }} · {{ p.reason }} · 本场前剩余 {{ p.remaining_before }} 场</p></div></template></div>

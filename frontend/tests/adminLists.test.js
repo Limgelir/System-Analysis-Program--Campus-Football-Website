@@ -27,7 +27,7 @@ test('审核详情迟到失败不关闭新详情或提前结束加载',async()=>
 })
 test('队伍切换不能被旧名单覆盖，当前批次不重复列入历史',async()=>{
   const a=deferred(),b=deferred(),c=deferred(),d=deferred(),rosters=[a,b],batches=[c,d]
-  const {vm,options}=component('AdminTeamManagement',{teamAPI:{getCurrentRoster:()=>rosters.shift().promise,getRosterBatches:()=>batches.shift().promise},seasonAPI:{},ListPagination:{},AdminTeamImport:{}})
+  const {vm,options}=component('AdminTeamManagement',{teamAPI:{getCurrentRoster:()=>rosters.shift().promise,getRosterBatches:()=>batches.shift().promise},seasonAPI:{},ListPagination:{},AdminTeamImport:{},AdminTeamEditor:{},confirmDraftLeave:()=>true})
   const first=vm.loadSelectedTeamDetails(1),second=vm.loadSelectedTeamDetails(2)
   b.resolve({data:{roster_batch:{id:22}}});d.resolve({data:{batches:[{id:22},{id:21}]}});await second
   a.resolve({data:{roster_batch:{id:11}}});c.resolve({data:{batches:[{id:11}]}});await first

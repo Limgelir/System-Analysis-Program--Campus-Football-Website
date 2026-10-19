@@ -5,7 +5,7 @@
       <div class="tiles"><button v-for="item in tiles" :key="item.key" @click="openList(item.key)" :disabled="!data.selected_season"><span>{{item.label}}</span><strong>{{data.summary[item.key]}}</strong></button></div>
       <h4>未来 7 天选派待核查（含今天）</h4><p>缺岗、已选人员停用或系统裁判赛季资格失效时提醒；不自动替换岗位，已锁定比赛仍不可改派。</p>
       <p v-if="!data.items.length">暂无需要核查的临近比赛。</p>
-      <ul v-else><li v-for="s in data.items" :key="s.id"><span>{{String(s.match_date).slice(0,10)}} · {{s.match_time ?? '时间待定'}} · {{s.team_a_name_snapshot}} vs {{s.team_b_name_snapshot}}</span><button @click="openDetail(s)">前往选派</button></li></ul>
+      <ul v-else><li v-for="s in data.items" :key="s.id"><span>{{String(s.match_date).slice(0,10)}} · {{displayMatchTime(s.match_time,s.match_end_time)}} · {{s.team_a_name_snapshot}} vs {{s.team_b_name_snapshot}}</span><button @click="openDetail(s)">前往选派</button></li></ul>
       <button v-if="data.summary.attention>data.items.length" @click="openList('attention')">查看全部待核查比赛</button>
     </template>
   </section>
@@ -14,6 +14,7 @@
 import {ref,onMounted,onBeforeUnmount} from 'vue'
 import {useRouter} from 'vue-router'
 import {adminAPI} from '../api'
+import {displayMatchTime} from '../utils/matchTime.js'
 const router=useRouter(),data=ref(null),loading=ref(false),error=ref('');let requestId=0
 const tiles=[{key:'main_pending',label:'裁判员未提交'},{key:'supervisor_pending',label:'裁判监督未提交'},{key:'submitted',label:'所需报告已提交'},{key:'returned',label:'已退回'},{key:'proxy_pending',label:'待管理员代填'},{key:'attention',label:'临近选派待核查'}]
 async function load(){const id=++requestId;loading.value=true;error.value='';try{const r=await adminAPI.getWorkbench();if(id===requestId)data.value=r.data}catch(e){if(id===requestId){error.value=e.response?.data?.message||e.message;data.value=null}}finally{if(id===requestId)loading.value=false}}

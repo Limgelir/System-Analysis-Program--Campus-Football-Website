@@ -112,10 +112,10 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
     for(const check of checks){const [[r]]=await pool.query(check.sql);assert.equal(r.issue_count,0,check.name);}
     const c=await pool.getConnection();try{await c.beginTransaction();await c.execute("UPDATE referee_match_signups SET intentions=JSON_ARRAY('main','main') WHERE schedule_id=? AND referee_id=?",[match.id,refs[0].id]);for(const check of checks){const [[r]]=await c.query(check.sql);assert.ok(r.issue_count>0,check.name);}}finally{await c.rollback();c.release();}
   });
-  await t.test('开球前报告锁定不关闭报名且报名不解锁选派；结束/停用赛季和跨赛季均禁止报名',async()=>{
+  await t.test('开球前报告开始不关闭报名且仍可调整选派；结束/停用赛季和跨赛季均禁止报名',async()=>{
     await pool.execute('UPDATE match_reports SET main_report_started_at=NOW() WHERE schedule_id=?',[other.id]);
     const row=await save(refs[0],other.id,['fourth']);assert.equal(row.signup_status,'active');
-    await call('/api/schedule/'+other.id+'/assign-referees',{main_referee_id:refs[0].id},'PUT',admin,400);
+    await call('/api/schedule/'+other.id+'/assign-referees',{main_referee_id:refs[0].id},'PUT',admin);
     await call('/api/schedule/'+other.id,{...base,field_order:2,venue:'铁笼'},'PUT',admin,400);
     await pool.execute('INSERT INTO player_season_settings(season_id,ended_at) VALUES (?,UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE ended_at=UTC_TIMESTAMP()',[season.id]);
     await save(refs[0],other.id,['main'],400);
@@ -128,4 +128,5 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
     const [[left]]=await pool.execute('SELECT COUNT(*) n FROM referee_match_signups WHERE schedule_id=?',[match.id]);assert.equal(left.n,0);
   });
   await require('./assignmentBoard.cjs')({t,pool,request,expectStatus,admin,season,base,refs,date});
+  await require('./futsal.cjs')({t,pool,request,expectStatus,admin,season,base,refs,date});
 };

@@ -95,7 +95,7 @@ test('导出请求使用全部当前筛选条件，不再只导出浏览器当�
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .+$/gm,'').replace('export default','const component =')
   let calls=0,downloaded
   const component=vm.runInNewContext(script+'; component',{
-    CompetitionOptions:{},VenueFields:{},AdminMatchSignups:{},SearchableRefereeSelect:{},ListPagination:{},
+    FourthOfficialSheetDialog:{},CompetitionOptions:{},AdminScheduleImport:{},VenueFields:{},AdminMatchSignups:{},SearchableRefereeSelect:{},ListPagination:{},
     scheduleAPI:{exportFiltered:async query=>{calls++;assert.equal(query.season_id,'5');assert.equal(query.page,'2');return 'full-csv'}},
     downloadBlob:(blob,name)=>{downloaded={blob,name}},exportError:async e=>e.message
   })

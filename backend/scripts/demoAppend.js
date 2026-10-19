@@ -11,7 +11,7 @@ const { recordSecurityEvent } = require('../utils/securityEvents');
 const history = require('../utils/reportHistory');
 const reportService = require('../services/reportService');
 const scheduleService = require('../services/scheduleService');
-const { ROLES } = require('../utils/officialAssignments');
+const ROLES = require('../utils/officialAssignments').ROLES.filter(r=>require('../utils/officialRequirements').roleRequired({},r.code));
 
 const ACCOUNT_COUNT = 30;
 const CASES = Object.freeze([
@@ -140,9 +140,9 @@ async function transition(c, schedule, section, operation, adminId, work) {
   if(section==='main'&&['submit','revise'].includes(operation))await require('../services/matchPublicationService').afterWrite(c,reportId,operation==='submit'?'submit_main':'revise',adminAction?'revise':null);
   if (!adminAction) {
     await c.execute(`INSERT INTO report_actor_events
-      (report_id,owner_assignment_id,operation,source_type,actor_referee_id,actor_admin_id,actor_name_snapshot)
-      VALUES (?,?,?,?,?,?,?)`, [reportId,owner.id,`${operation}_${section}`,proxy?'admin_proxy':'referee',
-      proxy?null:owner.referee_id,proxy?adminId:null,'[追加演示脚本] 合成操作']);
+      (report_id,owner_assignment_id,operation,source_type,actor_referee_id,actor_admin_id,actor_name_snapshot,owner_assignment_snapshot)
+      VALUES (?,?,?,?,?,?,?,?)`, [reportId,owner.id,`${operation}_${section}`,proxy?'admin_proxy':'referee',
+      proxy?null:owner.referee_id,proxy?adminId:null,'[追加演示脚本] 合成操作',JSON.stringify(owner)]);
   }
 }
 

@@ -110,10 +110,12 @@
 
               <p v-if="currentRoster?.team">球衣（上衣／裤子／袜子）：{{ currentRoster.team.shirt_color || '/' }} / {{ currentRoster.team.shorts_color || '/' }} / {{ currentRoster.team.socks_color || '/' }}</p>
 
+              <AdminTeamEditor :team-id="selectedTeamId" @saved="refreshSelectedTeamData" @busy="editorBusy=$event"/>
               <div class="detail-sections">
                 <div class="section-card">
                   <div class="section-header">
                     <div class="section-title">当前名单</div>
+                    <button type="button" class="secondary" :disabled="detailLoading || exportingRoster || !currentRosterPlayers.length" @click="exportCurrentRoster">{{ exportingRoster ? '导出中…' : '导出当前名单 CSV' }}</button>
                     <div class="section-subtitle">
                       {{ currentRoster?.roster_batch ? `版本 ${currentRoster.roster_batch.version_no}` : '暂无名单批次' }}
                     </div>
@@ -210,8 +212,11 @@
 
 <script>
 import { seasonAPI, teamAPI } from '../api'
+import AdminTeamEditor from '../components/AdminTeamEditor.vue'
+import { confirmDraftLeave } from '../../../shared-ui/interaction.js'
 import AdminTeamImport from '../components/AdminTeamImport.vue'
 import ListPagination from '../components/ListPagination.vue'
+import { downloadBlob, exportError } from '../utils/download'
 
 function extractMessage(error, fallback) {
   return error?.response?.data?.message || error?.message || fallback
@@ -223,11 +228,12 @@ function getPayload(response) {
 
 export default {
   name: 'AdminTeamManagement',
-  components:{ListPagination,AdminTeamImport},
+  components:{ListPagination,AdminTeamImport,AdminTeamEditor},
   data() {
     return {
       loading: false,historyPage:1,teamPage:1,detailRequestId:0,batchRequestId:0,
       detailLoading: false,
+      exportingRoster: false,editorBusy:false,
       batchLoading: false,
       creatingTeam: false,
       uploadingRoster: false,
@@ -265,6 +271,17 @@ export default {
     this.loadData()
   },
   methods: {
+    async exportCurrentRoster() {
+      if (this.detailLoading || this.exportingRoster || !this.selectedTeamId) return
+      const team = this.selectedTeam
+      this.exportingRoster = true
+      this.clearMessages()
+      try {
+        const blob = await teamAPI.exportCurrentRoster(team.id)
+        downloadBlob(blob, `${team.team_name}-当前名单.csv`.replace(/[\\/:*?"<>|]/g, '_'))
+      } catch (e) { this.error = await exportError(e) }
+      finally { this.exportingRoster = false }
+    },
     async imported(data){await this.loadData();const team=this.teams.find(t=>t.id===data.team_id);if(team)await this.selectTeam(team)},
     goDashboard() {
       this.$router.push('/admin-dashboard')
@@ -349,6 +366,7 @@ export default {
       this.selectedTeam = targetTeam
     },
     async loadData() {
+      if(this.editorBusy || !confirmDraftLeave())return
       this.loading = true
       this.clearMessages()
 
@@ -423,6 +441,7 @@ export default {
       }
     },
     async selectTeam(team) {
+      if(this.editorBusy || !confirmDraftLeave())return
       if (!team?.id) return
       this.clearMessages()
       this.selectedTeamId = team.id
@@ -431,6 +450,7 @@ export default {
       await this.loadSelectedTeamDetails(team.id)
     },
     async refreshSelectedTeamData() {
+      if(this.editorBusy || !confirmDraftLeave())return
       if (!this.selectedTeamId) return
       this.clearMessages()
       await this.loadTeams()

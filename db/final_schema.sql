@@ -320,6 +320,7 @@ CREATE TABLE match_schedules (
   team_b_name_snapshot VARCHAR(100) DEFAULT NULL COMMENT '客队名称快照',
   match_date DATE NOT NULL COMMENT '比赛日期',
   match_time TIME DEFAULT NULL COMMENT '中国标准时间开球时刻，精确到分钟；旧比赛可待定',
+  match_end_time TIME DEFAULT NULL COMMENT '可选同日结束时间，仅供展示',
   field_order VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL COMMENT '同一赛事内精确唯一的文本场序',
   field_order_sort VARCHAR(800) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin NOT NULL DEFAULT '',
   main_referee_id INT DEFAULT NULL COMMENT '主裁ID',
@@ -358,6 +359,7 @@ CREATE TABLE match_schedules (
     FOREIGN KEY (fourth_official_id) REFERENCES referee(id) ON DELETE RESTRICT,
   CONSTRAINT fk_schedule_supervisor
     FOREIGN KEY (supervisor_id) REFERENCES referee(id) ON DELETE RESTRICT,
+  CONSTRAINT chk_schedule_match_end_time CHECK (match_end_time IS NULL OR (match_time IS NOT NULL AND match_end_time > match_time AND match_end_time < '24:00:00' AND SECOND(match_end_time)=0)),
   CONSTRAINT chk_schedule_match_time CHECK (match_time IS NULL OR (match_time >= '00:00:00' AND match_time < '24:00:00' AND SECOND(match_time)=0)),
   CONSTRAINT chk_schedule_team_diff CHECK (team_a_id <> team_b_id),
   CONSTRAINT chk_schedule_referee_distinct CHECK (
@@ -385,6 +387,7 @@ CREATE TABLE match_schedules (
 CREATE TABLE match_reports (
   id INT PRIMARY KEY AUTO_INCREMENT COMMENT '报告ID',
   schedule_id INT NOT NULL COMMENT '赛程ID，一对一',
+  forfeit_side ENUM('none','home','away','both') NOT NULL DEFAULT 'none' COMMENT '弃权方；none表示正常比赛',
   home_score INT NOT NULL DEFAULT 0 COMMENT '主队比赛阶段得分（手填，不含点球大战）',
   away_score INT NOT NULL DEFAULT 0 COMMENT '客队比赛阶段得分（手填，不含点球大战）',
   home_penalty_score INT NOT NULL DEFAULT 0 COMMENT '主队点球大战得分',

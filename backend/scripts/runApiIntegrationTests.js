@@ -79,7 +79,7 @@ function runNodeTests(env) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--test', process.argv.includes('--team-auto-review')?'tests/integration/teamAutoReview.test.js':process.argv.includes('--schedule-deletion')?'tests/integration/scheduleDeletion.test.js':process.argv.includes('--supervision')?'tests/integration/supervision.test.js':process.argv.includes('--imports')?'tests/integration/adminImports.test.js':process.argv.includes('--competitions')?'tests/integration/competitions.test.js':'tests/integration/api.test.js'],
+      ['--test', process.argv.includes('--assignment-changes')?'tests/integration/assignmentChanges.test.js':process.argv.includes('--assignment-export')?'tests/integration/assignmentExport.test.js':process.argv.includes('--fourth-sheet')?'tests/integration/fourthOfficialSheet.test.js':process.argv.includes('--schedule-imports')?'tests/integration/scheduleImports.test.js':process.argv.includes('--futsal')?'tests/integration/futsal.test.js':process.argv.includes('--team-auto-review')?'tests/integration/teamAutoReview.test.js':process.argv.includes('--schedule-deletion')?'tests/integration/scheduleDeletion.test.js':process.argv.includes('--supervision')?'tests/integration/supervision.test.js':process.argv.includes('--imports')?'tests/integration/adminImports.test.js':process.argv.includes('--competitions')?'tests/integration/competitions.test.js':'tests/integration/api.test.js'],
       { cwd: BACKEND_ROOT, env, stdio: 'inherit' }
     );
     child.once('error', reject);

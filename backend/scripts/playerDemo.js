@@ -80,7 +80,7 @@ async function schedules(c,seasonId,formal,adminId,batch,refs){
   const history=require('../utils/reportHistory'),service=require('../services/reportService');
   for(let i=0;i<3;i++){
     const [m]=await c.execute('INSERT INTO match_schedules (season_id,match_type,team_a_id,team_b_id,team_a_name_snapshot,team_b_name_snapshot,match_date,match_time,venue,field_order,main_referee_name_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)',[seasonId,home.league_type,home.team_id,away.team_id,home.name,away.name,businessDate(),'17:35','樱花人草',i+1,`测试${batch}非系统裁判员`]);
-    const roles=require('../utils/officialAssignments').ROLES;
+    const roles=require('../utils/officialAssignments').ROLES.filter(r=>require('../utils/officialRequirements').roleRequired({},r.code));
     for(const [n,role]of roles.entries()){
       const external=i!==1&&n===0,person=refs[n],name=external?`测试${batch}非系统裁判员`:person.name;
       await c.execute(`UPDATE match_schedules SET ${role.field}=?,${role.name}_snapshot=? WHERE id=?`,[external?null:person.id,name,m.insertId]);

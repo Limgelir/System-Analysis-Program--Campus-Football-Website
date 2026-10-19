@@ -111,7 +111,7 @@ module.exports = async function({t,pool,state,request,expectStatus}) {
     expectStatus(await request(`${url}/fourth-official-image`,{token,body:image}),200,'代填上传图片');
     expectStatus(await request(`/api/files/report/${match.id}/fourth-official-image`,{token}),200,'管理员读取私有图片');
     expectStatus(await request(`/api/files/report/${match.id}/fourth-official-image`),401,'图片拒绝未登录');
-    expectStatus(await request(`/api/schedule/${match.id}/assign-referees`,{token,method:'PUT',body:{main_referee_id:`external:${externals[2].id}`}}),400,'代填后岗位锁定');
+    expectStatus(await request(`/api/schedule/${match.id}/assign-referees`,{token,method:'PUT',body:{main_referee_id:`external:${externals[2].id}`}}),400,'代填后仍拒绝同场互斥岗位重复选派');
     const reviews=['main','assistant1','assistant2','fourth'].map(target_role=>({target_role,score:8.5,advice:'测试评价'}));
     const reviewed=await request(`/api/report/schedule/${match.id}/supervisor`,{token:sup.token,body:{reviews}});
     expectStatus(reviewed,200,'系统裁判监督评价四个外部岗位');

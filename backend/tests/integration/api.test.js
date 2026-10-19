@@ -527,7 +527,7 @@ test('核心 API 业务规则在隔离数据库中完整回归', async t => {
     expectStatus(removeImage, 200, '裁判员删除第四官员记录单');
   });
 
-  await t.test('报告开始后锁定赛程和全部岗位', async () => {
+  await t.test('报告开始后比赛信息锁定，选派仍检查候选人资格', async () => {
     const existing = await request(`/api/schedule/${state.scheduleId}`, { token: state.tokens.admin });
     expectStatus(existing, 200, '读取赛程详情');
 
@@ -552,7 +552,7 @@ test('核心 API 业务规则在隔离数据库中完整回归', async t => {
       method: 'PUT', token: state.tokens.admin,
       body: { fourth_official_id: state.refereeIds.outsider }
     });
-    expectStatus(rolesLocked, 400, '报告开始后修改岗位');
+    expectStatus(rolesLocked, 409, '未通过赛季审核的裁判仍不能选派');
   });
 
   await t.test('裁判员与裁判监督提交后各自分区锁定', async () => {
@@ -1174,5 +1174,9 @@ test('核心 API 业务规则在隔离数据库中完整回归', async t => {
   await require('./refereeGrades.cjs')({ t, pool, state, request, expectStatus });
   await require('./collegeCatalog.cjs')({ t, pool, state, request, expectStatus });
   await require('./collegeChanges.cjs')({ t, pool, state, request, expectStatus });
+  await require('./reportForfeits.cjs')({ t, pool, state, request, expectStatus });
+  await require('./scheduleImports.cjs')({ t, pool, state, request, expectStatus });
+  await require('./fourthOfficialSheet.cjs')({ t, pool, state, request, expectStatus });
+  await require('./assignmentExport.cjs')({ t, pool, state, request, expectStatus });
   if (process.env.REFWEB_OPS_INTEGRATION === '1') await require('./operations.cjs')({ t, pool });
 });

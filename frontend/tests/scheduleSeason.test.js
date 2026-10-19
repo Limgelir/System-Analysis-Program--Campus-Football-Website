@@ -10,7 +10,7 @@ const source = readFileSync(new URL('../src/pages/AdminSchedule.vue', import.met
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
   .replace(/^import .*$/gm, '').replace('export default', 'return')
 function makeVm(scheduleAPI, query = {}, teamAPI = { getSeasonTeams: async () => ({ data: { teams: [] } }) }) {
-  const component = new Function('scheduleAPI', 'teamAPI', 'SearchableRefereeSelect', 'ListPagination', 'matchTimeError', 'VenueFields', 'AdminMatchSignups', 'venueText', 'CompetitionOptions', script)(scheduleAPI, teamAPI, {}, {}, matchTimeError, {}, {}, value=>value.venue, {})
+  const component = new Function('scheduleAPI', 'teamAPI', 'SearchableRefereeSelect', 'ListPagination', 'matchTimeError', 'VenueFields', 'AdminMatchSignups', 'venueText', 'CompetitionOptions', 'AdminScheduleImport', 'FourthOfficialSheetDialog', script)(scheduleAPI, teamAPI, {}, {}, matchTimeError, {}, {}, value=>value.venue, {}, {}, {})
   const vm = { ...component.data(), $route: { query }, $router: { push: value => value } }
   for (const [key, method] of Object.entries(component.methods)) vm[key] = method.bind(vm)
   for (const [key, value] of Object.entries(component.computed)) {

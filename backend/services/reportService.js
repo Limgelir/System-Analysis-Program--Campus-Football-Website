@@ -11,7 +11,7 @@ const {
   validateCardTeams,
   validateGoalRecordLimit,
   validateGoalTeams,
-  validateGoalCountAgainstScore,
+  validateReportResult,
   validateSelectedPlayers
 } = require('../utils/reportValidator');
 
@@ -158,7 +158,7 @@ class ReportService {
       const { stats, reviews, cards, goals } = await this.getReportCollections(connection, reportId);
       const sections = {};
       for (const section of ['main','supervisor']) sections[section] = await history.readSectionState(connection,reportId,section);
-      const [actorEvents] = await connection.execute(`SELECT id, operation, source_type, actor_name_snapshot, created_at, owner_assignment_id
+      const [actorEvents] = await connection.execute(`SELECT id, operation, source_type, actor_name_snapshot, created_at, owner_assignment_id, owner_assignment_snapshot
         FROM report_actor_events WHERE report_id = ? ORDER BY id DESC LIMIT 200`, [reportId]);
       const scheduleWithViewer = this.attachViewerContextToSchedule(schedule, viewerContext);
       const visibleReviews = viewerContext.viewer_permissions.can_read_all_reviews
@@ -268,7 +268,7 @@ class ReportService {
 
   async loadPersistedMainReportState(connection, reportId) {
     const [reportRows] = await connection.execute(
-      `SELECT id, home_score, away_score, home_penalty_score, away_penalty_score
+      `SELECT id, forfeit_side, home_score, away_score, home_penalty_score, away_penalty_score
        FROM match_reports
        WHERE id = ?
        LIMIT 1`,
@@ -311,12 +311,7 @@ class ReportService {
     validateCardTeams(normalizedState.cards, teamContext);
     validateGoalTeams(normalizedState.goals, teamContext);
     validateGoalRecordLimit(normalizedState.goals, teamContext);
-    validateGoalCountAgainstScore(
-      normalizedState.goals,
-      teamContext,
-      normalizedState.home_score,
-      normalizedState.away_score
-    );
+    validateReportResult(normalizedState, teamContext);
 
     const selectedPlayerIds = Array.from(collectSelectedPlayerIds(normalizedState.cards, normalizedState.goals));
     const grandfatheredPlayerIds = await this.getExistingReportPlayerIds(connection, reportId);

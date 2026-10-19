@@ -16,9 +16,9 @@ module.exports = async ({ t, pool, state, request, expectStatus }) => {
     };
     try {
       const before=await snapshot();
-      await c.query('ALTER TABLE match_schedules DROP CHECK chk_schedule_match_time, DROP COLUMN match_time');
+      await c.query('ALTER TABLE match_schedules DROP CHECK chk_schedule_match_end_time, DROP CHECK chk_schedule_match_time, DROP COLUMN match_time');
       await c.query("DELETE FROM schema_migrations WHERE version>='0018'");
-      const upgraded=await runPendingMigrations(c);assert.deepEqual(upgraded.executed.map(m=>m.version),['0018','0019','0020','0021','0022','0023','0024','0025','0026','0027','0028','0029','0030','0031']);
+      const upgraded=await runPendingMigrations(c);assert.deepEqual(upgraded.executed.map(m=>m.version),['0018','0019','0020','0021','0022','0023','0024','0025','0026','0027','0028','0029','0030','0031','0032','0033','0034','0035','0036']);
       assert.deepEqual(await snapshot(),before);
       const [[count]]=await c.query('SELECT COUNT(*) AS n FROM match_schedules WHERE match_time IS NOT NULL');assert.equal(count.n,0);
       await runPendingMigrations(c);await assertMigrationsCurrent(c);assert.deepEqual(await snapshot(),before);
@@ -49,7 +49,7 @@ module.exports = async ({ t, pool, state, request, expectStatus }) => {
     const token=require('jsonwebtoken').sign({id:player.id,role:'player',tokenVersion:player.token_version},process.env.JWT_SECRET);
     const results=await call('/api/player/team-results/'+home.insertId,undefined,'GET',200,token);assert.deepEqual(results.matches.map(r=>r.match_time),expected);
     const csv=await request('/api/schedule/export?season_id='+season.id+'&page_size=1',{token:admin});expectStatus(csv,200,'导出');
-    for(const value of ['开球时间','17:35','18:00','00:00','时间待定'])assert.ok(csv.data.includes(value));
+    for(const value of ['比赛时间','17:35','18:00','00:00','时间待定'])assert.ok(csv.data.includes(value));
   });
   await t.test('旧比赛可保留待定或补时间，已知时间不可清空；省略时间不覆盖现值', async () => {
     let old=await call('/api/schedule/'+legacy,{...base,field_order:899},'PUT');assert.equal(old.match_time,null);

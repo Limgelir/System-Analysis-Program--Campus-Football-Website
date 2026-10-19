@@ -102,7 +102,7 @@
                 <td>{{ roleLabel(item) }}</td>
                 <td>{{ item.field_order ?? '-' }}</td>
                 <td>{{ displayTeams(item) }}</td>
-                <td>{{ formatDate(item.match_date) }} · {{ displayMatchTime(item.match_time) }}</td>
+                <td>{{ formatDate(item.match_date) }} · {{ displayMatchTime(item.match_time, item.match_end_time) }}</td>
                 <td><strong>{{ item.score_display }}</strong></td>
                 <td>{{ formatProgress(item.report?.main_report_status, item.report?.main_report_started_at, item.report?.main_report_submitted_at) }}</td>
                 <td>{{ item.supervisor_required === false ? '无需裁判监督报告' : formatProgress(item.report?.supervisor_review_status, item.report?.supervisor_review_started_at, item.report?.supervisor_review_submitted_at) }}</td>
@@ -122,7 +122,7 @@
             </div>
             <div class="mobile-title">{{ displayTeams(item) }}</div>
             <div class="mobile-meta">场序：{{ item.field_order ?? '-' }}</div>
-            <div class="mobile-meta">日期：{{ formatDate(item.match_date) }} · {{ displayMatchTime(item.match_time) }}</div>
+            <div class="mobile-meta">日期：{{ formatDate(item.match_date) }} · {{ displayMatchTime(item.match_time, item.match_end_time) }}</div>
             <div class="mobile-meta">裁判员区：{{ formatProgress(item.report?.main_report_status, item.report?.main_report_started_at, item.report?.main_report_submitted_at) }}</div>
             <div class="mobile-meta">裁判监督区：{{ item.supervisor_required === false ? '无需裁判监督报告' : formatProgress(item.report?.supervisor_review_status, item.report?.supervisor_review_started_at, item.report?.supervisor_review_submitted_at) }}</div>
             <div class="mobile-actions">
@@ -222,6 +222,7 @@ const ROLE_LABEL_MAP = Object.freeze({
   assistant1: '第一助理裁判员',
   assistant2: '第二助理裁判员',
   fourth_official: '第四官员',
+  second: '第二裁判员', timekeeper: '计时员', second_referee_id:'第二裁判员',timekeeper_id:'计时员',
   supervisor: '裁判监督',
   main: '裁判员',
   assistant1_id: '第一助理裁判员',
@@ -254,7 +255,7 @@ function formatDateLong(dateString) { return displayMatchDate(dateString) }
 function buildMatchLabel(item = {}) {
   const orderText = item.field_order ? `场序${item.field_order}` : '场序-'
   const typeText = item.match_type || ''
-  const dateText = formatDateLong(item.match_date) + " " + displayMatchTime(item.match_time)
+  const dateText = formatDateLong(item.match_date) + " " + displayMatchTime(item.match_time, item.match_end_time)
   const head = `${orderText}${typeText}，`
   return `${head}\n${dateText}`
 }
@@ -415,6 +416,7 @@ export default {
       const counts = {
         total: this.records.length,
         main_referee: 0,
+        second: 0, timekeeper: 0,
         assistant1: 0,
         assistant2: 0,
         fourth_official: 0,
@@ -431,6 +433,8 @@ export default {
     roleSummary() {
       return [
         { key: 'main_referee', label: '裁判员', count: this.summary.main_referee },
+        {key:'second',label:'第二裁判员',count:this.summary.second},
+        {key:'timekeeper',label:'计时员',count:this.summary.timekeeper},
         { key: 'assistant1', label: '第一助理裁判员', count: this.summary.assistant1 },
         { key: 'assistant2', label: '第二助理裁判员', count: this.summary.assistant2 },
         { key: 'fourth_official', label: '第四官员', count: this.summary.fourth_official },
@@ -442,7 +446,7 @@ export default {
     await Promise.all([this.loadStats(), this.loadTrends()])
   },
   methods: {
-    displayMatchTime(value) { return displayMatchTime(value) },
+    displayMatchTime(value, endTime) { return displayMatchTime(value, endTime) },
     formatMetricValue(metricKey, value) {
       if (value === null || value === undefined) return '-'
       const numeric = Number(value)
@@ -560,6 +564,7 @@ export default {
           match_type: item.match_type ?? null,
           match_date: item.match_date ?? null,
           match_time: item.match_time ?? null,
+          match_end_time: item.match_end_time ?? null,
           field_order: item.field_order ?? null,
           role: item.role ?? null,
           running_distance_m: item.running_distance_m ?? null,
@@ -586,6 +591,8 @@ export default {
       const role = item.my_role || item.my_assignment?.role || ''
 
       if (key === 'main_referee_id' || code === 'main' || role === '裁判员') return 'main_referee'
+      if (key === 'second_referee_id' || code === 'second') return 'second'
+      if (key === 'timekeeper_id' || code === 'timekeeper') return 'timekeeper'
       if (key === 'assistant1_id' || code === 'assistant1' || role === '第一助理裁判员') return 'assistant1'
       if (key === 'assistant2_id' || code === 'assistant2' || role === '第二助理裁判员') return 'assistant2'
       if (key === 'fourth_official_id' || code === 'fourth' || role === '第四官员') return 'fourth_official'

@@ -23,6 +23,8 @@ const ROLE_NAME_SNAPSHOT_FIELDS = Object.freeze({
   assistant1_id: 'assistant1_name_snapshot',
   assistant2_id: 'assistant2_name_snapshot',
   fourth_official_id: 'fourth_official_name_snapshot',
+  second_referee_id: 'second_referee_name_snapshot',
+  timekeeper_id: 'timekeeper_name_snapshot',
   supervisor_id: 'supervisor_name_snapshot'
 });
 
@@ -31,16 +33,13 @@ const SCHEDULE_MUTATION_FIELDS = Object.freeze([
   'team_a_id',
   'team_b_id',
   'match_date',
-  'match_time', 'venue', 'venue_detail', 'schedule_revision', 'supervisor_required', 'fourth_required',
+  'match_time', 'match_end_time', 'venue', 'venue_detail', 'schedule_revision', 'supervisor_required', 'fourth_required', 'futsal', 'confirm_format_change',
   'field_order',
-  'main_referee_id',
-  'assistant1_id',
-  'assistant2_id',
-  'fourth_official_id',
-  'supervisor_id'
+  ...SCHEDULE_ROLE_FIELDS
 ]);
 
 const SCHEDULE_RESPONSE_FIELDS = Object.freeze([
+  'futsal','second_referee_id','second_referee_name','second_referee_name_snapshot','second_referee_id_selection','second_source_type','timekeeper_id','timekeeper_name','timekeeper_name_snapshot','timekeeper_id_selection','timekeeper_source_type',
   'id',
   'season_id',
   'season_code',
@@ -52,7 +51,7 @@ const SCHEDULE_RESPONSE_FIELDS = Object.freeze([
   'team_a_name_snapshot',
   'team_b_name_snapshot',
   'match_date',
-  'match_time', 'venue', 'venue_detail', 'schedule_revision',
+  'match_time', 'match_end_time', 'venue', 'venue_detail', 'schedule_revision',
   'field_order',
   'main_referee_id',
   'main_referee_name_snapshot',
@@ -190,6 +189,8 @@ function normalizeScheduleRecord(record = {}) {
     assistant1_id: toNullableInt(record.assistant1_id),
     assistant2_id: toNullableInt(record.assistant2_id),
     fourth_official_id: toNullableInt(record.fourth_official_id),
+    second_referee_id: toNullableInt(record.second_referee_id),
+    timekeeper_id: toNullableInt(record.timekeeper_id),
     supervisor_id: toNullableInt(record.supervisor_id)
   };
 
@@ -216,6 +217,8 @@ function normalizeScheduleRecord(record = {}) {
 
   return {
     delete_state: record.delete_checked_at ? deletion.decision(record) : undefined,
+    futsal: require('../utils/officialRequirements').isFutsal(record),
+    ...Object.fromEntries(officials.ROLES.flatMap(role=>[[role.field,toNullableInt(record[role.field])],[role.name,toNullableString(record[role.name])],[role.name+'_snapshot',toNullableString(record[role.name+'_snapshot'])]])),
     supervisor_required: require('../utils/supervisionRules').required(record.supervisor_required),
     fourth_required: require('../utils/officialRequirements').required(record.fourth_required),
     field_locked: require('../utils/supervisionRules').fieldLocked(record),
@@ -238,6 +241,7 @@ function normalizeScheduleRecord(record = {}) {
     team_b_name_snapshot: teamBNameSnapshot,
     match_date: record.match_date || null,
     match_time: readMatchTime(record.match_time),
+    match_end_time: readMatchTime(record.match_end_time),
     field_order: toNullableString(record.field_order),
     ...normalizedRoles,
     main_referee_name_snapshot: toNullableString(record.main_referee_name_snapshot),
@@ -374,6 +378,7 @@ function buildScheduleDetailRecord(record = {}) {
     })
   };
 
+  for(const role of officials.ROLES.filter(r=>['second','timekeeper'].includes(r.code)))referees[role.code]=buildRefereeRoleDetail(record,{idField:role.field,nameField:role.name,roleKey:role.field,roleCode:role.code,label:role.label});
   const assignment = {
     status: normalized.assignment_status,
     is_complete: normalized.is_assignment_complete,
@@ -392,6 +397,7 @@ function buildScheduleDetailRecord(record = {}) {
     main_report_submitted_at: record.main_report_submitted_at || null,
     supervisor_review_submitted_at: record.supervisor_review_submitted_at || null,
     home_score: toNullableInt(record.home_score) || 0,
+    forfeit_side: record.forfeit_side || 'none',
     away_score: toNullableInt(record.away_score) || 0,
     home_penalty_score: toNullableInt(record.home_penalty_score) || 0,
     away_penalty_score: toNullableInt(record.away_penalty_score) || 0,
@@ -405,7 +411,8 @@ function buildScheduleDetailRecord(record = {}) {
     match_type: normalized.match_type,
     match_date: normalized.match_date,
     match_time: normalized.match_time,
-      venue:normalized.venue, venue_detail:normalized.venue_detail,
+    match_end_time: normalized.match_end_time,
+    venue:normalized.venue, venue_detail:normalized.venue_detail,
     display_teams: normalized.display_teams,
     teams: {
       home_name: teams.home.display_name,
@@ -416,6 +423,8 @@ function buildScheduleDetailRecord(record = {}) {
       assistant1_name: normalized.assistant1_name,
       assistant2_name: normalized.assistant2_name,
       fourth_official_name: normalized.fourth_official_name,
+      second_referee_name: normalized.second_referee_name,
+      timekeeper_name: normalized.timekeeper_name,
       supervisor_name: normalized.supervisor_name
     }
   };
@@ -430,9 +439,11 @@ function buildScheduleDetailRecord(record = {}) {
     },
     match: {
       id: normalized.id,
+      futsal: normalized.futsal,
       match_type: normalized.match_type,
       match_date: normalized.match_date,
       match_time: normalized.match_time,
+      match_end_time: normalized.match_end_time,
       venue:normalized.venue, venue_detail:normalized.venue_detail,
       field_order: normalized.field_order,
       display_teams: normalized.display_teams,
@@ -495,7 +506,8 @@ class ScheduleService {
       validation_rules: {
         active_season_required: true,
         match_date_required: true,
-        match_time: '新建必填HH:mm；旧比赛可为null；已知时间不能清空；中国标准时间',
+        match_time: '新建必填HH:mm或HH:mm-HH:mm；读取为开始时间HH:mm；旧比赛可为null；中国标准时间',
+        match_end_time: '可选同日结束时间HH:mm，仅用于展示；须晚于开始时间；单时间输入移除结束时间',
         field_order: '1—50个字符，去除首尾空格后在同一赛事内精确唯一（区分大小写）',
         team_scope: '主客队都必须属于当前启用赛季',
         team_distinct: true,
@@ -568,12 +580,12 @@ class ScheduleService {
   async getScheduleByIdForWrite(connection, scheduleId) {
     const [rows] = await connection.execute(
       `SELECT s.id,
-              s.season_id, s.schedule_revision, s.supervisor_required, s.fourth_required, s.venue, s.venue_detail,
+              s.season_id, s.schedule_revision, s.futsal, s.supervisor_required, s.fourth_required, s.venue, s.venue_detail,
               s.match_type,
               s.team_a_id,
               s.team_b_id,
               s.match_date,
-              s.match_time,
+              s.match_time, s.match_end_time,
               s.field_order,
               s.main_referee_id,
               s.assistant1_id,
@@ -864,20 +876,21 @@ class ScheduleService {
       toNullableInt(existingSchedule.team_b_id) !== toNullableInt(payload.team_b_id) ||
       String(existingSchedule.match_date || '').slice(0, 10) !== String(payload.match_date || '').slice(0, 10) ||
       readMatchTime(existingSchedule.match_time) !== readMatchTime(payload.match_time) ||
+      readMatchTime(existingSchedule.match_end_time) !== readMatchTime(payload.match_end_time) ||
       existingSchedule.venue !== payload.venue || existingSchedule.venue_detail !== payload.venue_detail ||
       toNullableString(existingSchedule.field_order) !== toNullableString(payload.field_order)
     );
 
     if (coreChanged) {
-      throw createBusinessError('报告已开始填写，比赛类型、队伍、日期、开球时间和场序均已锁定', {
+      throw createBusinessError('报告已开始填写，比赛类型、队伍、日期、比赛时间和场序均已锁定', {
         code: 'SCHEDULE_CORE_LOCKED'
       });
     }
 
-    // Role locking and source identities are checked by officials.prepare before normalization.
+    // Role requirements and source identities are checked by officials.prepare before normalization.
   }
 
-  async assignReferees(scheduleId, data = {}) {
+  async assignReferees(scheduleId, data = {}, viewer) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -890,12 +903,12 @@ class ScheduleService {
         });
       }
 
-      if (!Object.hasOwn(data,'supervisor_required') && !Object.hasOwn(data,'fourth_required') && !SCHEDULE_ROLE_FIELDS.some(field => Object.hasOwn(data, field))) throw createBusinessError('至少提供一个裁判角色字段进行选派');
+      if (!Object.hasOwn(data,'futsal') && !Object.hasOwn(data,'supervisor_required') && !Object.hasOwn(data,'fourth_required') && !SCHEDULE_ROLE_FIELDS.some(field => Object.hasOwn(data, field))) throw createBusinessError('至少提供一个裁判角色字段进行选派');
       checkScheduleRevision(data.schedule_revision,existingSchedule.schedule_revision);
       const prepared = await officials.prepare(connection, existingSchedule.season_id, existingSchedule, data);
       const mergedAssignment = prepared.fields;
       const nameSnapshots = prepared.snapshots;
-      await officials.persist(connection, scheduleId, prepared);
+      await officials.persist(connection, scheduleId, prepared, viewer);
       await connection.execute('UPDATE match_schedules SET supervisor_required=?,fourth_required=? WHERE id=?',[prepared.fields.supervisor_required,prepared.fields.fourth_required,scheduleId]);
 
       const [result] = await connection.execute(
@@ -934,6 +947,7 @@ class ScheduleService {
       }
 
       const updatedSchedule = await this.queryScheduleDetail(connection, scheduleId);
+      if (updatedSchedule) updatedSchedule.assignment_warnings = await require('./assignmentWarningService').warnings(connection,updatedSchedule,Object.fromEntries(officials.ROLES.map(r=>[r.field,officials.selectionFor(updatedSchedule,r)])));
       if (!updatedSchedule) {
         throw createBusinessError('裁判选派后读取赛程详情失败，请刷新后重试', {
           statusCode: 500,
@@ -987,7 +1001,23 @@ class ScheduleService {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
+      const result = await this.createScheduleInTransaction(connection, data);
+      await connection.commit();
+      return result;
+    } catch (error) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        safeLog('赛程创建回滚失败:', rollbackError, 'error');
+      }
+      throw this.mapPersistenceError(error, '赛程创建失败');
+    } finally {
+      connection.release();
+    }
+  }
 
+  // 单场与批量导入共用全部业务校验，事务由调用方统一提交。
+  async createScheduleInTransaction(connection, data) {
       const { payload, activeSeason, teamMap } = await this.validateScheduleWritePayload(connection, data);
       const teamA = teamMap.get(payload.team_a_id);
       const teamB = teamMap.get(payload.team_b_id);
@@ -1010,7 +1040,7 @@ class ScheduleService {
            team_a_name_snapshot,
            team_b_name_snapshot,
            match_date,
-           match_time, venue, venue_detail,
+           match_time, match_end_time, venue, venue_detail,
            field_order,
            main_referee_id,
            assistant1_id,
@@ -1022,7 +1052,7 @@ class ScheduleService {
            assistant2_name_snapshot,
            fourth_official_name_snapshot,
            supervisor_name_snapshot
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           activeSeason.id,
           payload.match_type,
@@ -1031,7 +1061,7 @@ class ScheduleService {
           teamA.team_name,
           teamB.team_name,
           payload.match_date,
-          payload.match_time, payload.venue, payload.venue_detail,
+          payload.match_time, payload.match_end_time, payload.venue, payload.venue_detail,
           payload.field_order,
           payload.main_referee_id,
           payload.assistant1_id,
@@ -1050,8 +1080,6 @@ class ScheduleService {
       await officials.persist(connection, result.insertId, prepared);
       const createdSchedule = await this.queryScheduleDetail(connection, result.insertId);
 
-      await connection.commit();
-
       if (createdSchedule) {
         return createdSchedule;
       }
@@ -1069,16 +1097,6 @@ class ScheduleService {
         report_exists: false,
         match_count: null
       });
-    } catch (error) {
-      try {
-        await connection.rollback();
-      } catch (rollbackError) {
-        safeLog('赛程创建回滚失败:', rollbackError, 'error');
-      }
-      throw this.mapPersistenceError(error, '赛程创建失败');
-    } finally {
-      connection.release();
-    }
   }
 
   async queryAdminSchedules(connection, options = {}) {
@@ -1141,6 +1159,7 @@ class ScheduleService {
          team_b.league_type AS team_b_league_type,
          mr.id AS report_id,
          CASE WHEN mr.id IS NULL THEN 0 ELSE 1 END AS report_exists,
+         mr.forfeit_side,
          mr.home_score,
          mr.away_score,
          mr.home_penalty_score,
@@ -1288,22 +1307,18 @@ class ScheduleService {
          LEFT JOIN referee assistant2_ref ON assistant2_ref.id = s.assistant2_id
          LEFT JOIN referee fourth_ref ON fourth_ref.id = s.fourth_official_id
          LEFT JOIN referee supervisor_ref ON supervisor_ref.id = s.supervisor_id
-         WHERE s.main_referee_id = ?
-            OR s.assistant1_id = ?
-            OR s.assistant2_id = ?
-            OR s.fourth_official_id = ?
-            OR s.supervisor_id = ?
+         WHERE EXISTS (SELECT 1 FROM match_official_assignments mine WHERE mine.schedule_id=s.id AND mine.referee_id=? AND mine.source_type='system')
          ORDER BY se.is_active DESC, s.match_date ASC, (s.match_time IS NULL) ASC, s.match_time ASC, s.field_order_sort ASC, s.field_order ASC, s.id ASC`,
         [
           normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId,
           normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId,
           normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId,
-          normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId, normalizedRefereeId
+          normalizedRefereeId
         ]
       );
 
       await officials.hydrate(connection, rows);
-      return rows.map(row => {const roles=officials.ROLES.filter(role=>row.officials.some(a=>a.role===role.code&&a.source_type==='system'&&Number(a.referee_id)===normalizedRefereeId));row.my_role_codes=roles.map(r=>r.code);row.my_role=roles.map(r=>r.label).join('、');return this.normalizeScheduleRecord(row);});
+      return rows.map(row => {const roles=officials.ROLES.filter(role=>row.officials.some(a=>a.role===role.code&&a.source_type==='system'&&Number(a.referee_id)===normalizedRefereeId));row.my_role_codes=roles.map(r=>r.code);row.my_role_code=roles[0]?.code||null;row.my_role_key=roles[0]?.field||null;row.my_role=roles.map(r=>r.label).join('、');return this.normalizeScheduleRecord(row);});
     } finally {
       connection.release();
     }
@@ -1324,7 +1339,7 @@ class ScheduleService {
            s.id AS schedule_id,
            s.match_type,
            s.match_date,
-           s.match_time,
+           s.match_time, s.match_end_time,
            s.field_order,
            rs.role,
            rs.running_distance_m,
@@ -1350,6 +1365,7 @@ class ScheduleService {
         match_type: row.match_type || null,
         match_date: row.match_date || null,
         match_time: readMatchTime(row.match_time),
+        match_end_time: readMatchTime(row.match_end_time),
         field_order: toNullableString(row.field_order),
         role: row.role || null,
         running_distance_m: row.running_distance_m === null ? null : Number(row.running_distance_m),
@@ -1377,7 +1393,7 @@ class ScheduleService {
   }
 
   async getScheduleDeleteState(connection, scheduleId) {
-    const [[row]]=await connection.execute(`SELECT s.id,s.match_date,s.match_time,s.season_id,s.match_type,mr.id AS report_id,
+    const [[row]]=await connection.execute(`SELECT s.id,s.match_date,s.match_time, s.match_end_time,s.season_id,s.match_type,mr.id AS report_id,
       DATE_FORMAT(UTC_TIMESTAMP()+INTERVAL 8 HOUR,'%Y-%m-%d %H:%i:%s') AS delete_checked_at
       FROM match_schedules s LEFT JOIN match_reports mr ON mr.schedule_id=s.id WHERE s.id=?`,[scheduleId]);
     return row||null;
@@ -1416,7 +1432,7 @@ class ScheduleService {
     } finally {connection.release();}
   }
 
-  async updateSchedule(scheduleId, data) {
+  async updateSchedule(scheduleId, data, viewer) {
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -1431,11 +1447,13 @@ class ScheduleService {
 
       const { payload, activeSeason, teamMap } = await this.validateScheduleWritePayload(connection, {
         ...data,
+        futsal:Object.hasOwn(data,'futsal')?data.futsal:existingSchedule.futsal,
         supervisor_required:Object.hasOwn(data,'supervisor_required')?data.supervisor_required:existingSchedule.supervisor_required,
         fourth_required:Object.hasOwn(data,'fourth_required')?data.fourth_required:existingSchedule.fourth_required,
         ...Object.fromEntries(officials.ROLES.filter(role=>!Object.hasOwn(data,role.field)).map(role=>[role.field,officials.selectionFor(existingSchedule,role)])),
         ...(!Object.hasOwn(data,'venue')?{venue:existingSchedule.venue,venue_detail:existingSchedule.venue_detail}:{}),
-        match_time: Object.hasOwn(data, 'match_time') ? data.match_time : readMatchTime(existingSchedule.match_time)
+        match_time: Object.hasOwn(data, 'match_time') ? data.match_time : readMatchTime(existingSchedule.match_time),
+        ...(!Object.hasOwn(data, 'match_time') && !Object.hasOwn(data, 'match_end_time') ? { match_end_time: readMatchTime(existingSchedule.match_end_time) } : {})
       }, {
         allowUnknownTime: existingSchedule.match_time === null,
         allowUnknownVenue: existingSchedule.venue === null,
@@ -1449,7 +1467,7 @@ class ScheduleService {
       this.validateLockedScheduleChanges(existingSchedule, payload);
       checkScheduleRevision(data.schedule_revision,existingSchedule.schedule_revision);
       const nameSnapshots = prepared.snapshots;
-      await officials.persist(connection, scheduleId, prepared);
+      await officials.persist(connection, scheduleId, prepared, viewer);
       await connection.execute('UPDATE match_schedules SET supervisor_required=?,fourth_required=? WHERE id=?',[prepared.fields.supervisor_required,prepared.fields.fourth_required,scheduleId]);
 
       const teamA = teamMap.get(payload.team_a_id);
@@ -1469,7 +1487,7 @@ class ScheduleService {
              team_a_name_snapshot = ?,
              team_b_name_snapshot = ?,
              match_date = ?,
-             match_time = ?, venue = ?, venue_detail = ?,
+             match_time = ?, match_end_time = ?, venue = ?, venue_detail = ?,
              field_order = ?, field_order_sort = ?,
              main_referee_id = ?,
              assistant1_id = ?,
@@ -1489,7 +1507,7 @@ class ScheduleService {
           teamA.team_name,
           teamB.team_name,
           payload.match_date,
-          payload.match_time, payload.venue, payload.venue_detail,
+          payload.match_time, payload.match_end_time, payload.venue, payload.venue_detail,
           payload.field_order, require('../utils/competitionRules').fieldOrderSortKey(payload.field_order),
           payload.main_referee_id,
           payload.assistant1_id,

@@ -5,7 +5,7 @@ const { UPLOAD_ROOT } = require('../utils/uploadPaths');
 
 const checks = [
   {name:'裁判报名当前状态与追加历史一致',sql:`SELECT COUNT(*) issue_count FROM referee_match_signups ms LEFT JOIN referee_match_signup_events e ON e.signup_id=ms.id AND e.revision=ms.revision WHERE e.id IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(e.after_snapshot,'$.status'))<>ms.status OR NOT(JSON_EXTRACT(e.after_snapshot,'$.intentions')<=>ms.intentions) OR ms.revision<>(SELECT COUNT(*) FROM referee_match_signup_events h WHERE h.signup_id=ms.id)`},
-  {name:'裁判报名意向合法且不重复',sql:`SELECT COUNT(*) issue_count FROM referee_match_signups WHERE JSON_TYPE(intentions)<>'ARRAY' OR JSON_LENGTH(intentions) NOT BETWEEN 1 AND 4 OR NOT JSON_CONTAINS(JSON_ARRAY('main','assistant','fourth','supervisor'),intentions) OR JSON_LENGTH(intentions)<>(JSON_CONTAINS(intentions,JSON_QUOTE('main'))+JSON_CONTAINS(intentions,JSON_QUOTE('assistant'))+JSON_CONTAINS(intentions,JSON_QUOTE('fourth'))+JSON_CONTAINS(intentions,JSON_QUOTE('supervisor')))`},
+  {name:'裁判报名意向合法且不重复',sql:`SELECT COUNT(*) issue_count FROM referee_match_signups WHERE JSON_TYPE(intentions)<>'ARRAY' OR (JSON_LENGTH(intentions)>4 OR (status='active' AND JSON_LENGTH(intentions)=0)) OR NOT JSON_CONTAINS(JSON_ARRAY('main','assistant','fourth','second','timekeeper','supervisor'),intentions) OR JSON_LENGTH(intentions)<>(JSON_CONTAINS(intentions,JSON_QUOTE('main'))+JSON_CONTAINS(intentions,JSON_QUOTE('assistant'))+JSON_CONTAINS(intentions,JSON_QUOTE('fourth'))+JSON_CONTAINS(intentions,JSON_QUOTE('supervisor'))+JSON_CONTAINS(intentions,JSON_QUOTE('second'))+JSON_CONTAINS(intentions,JSON_QUOTE('timekeeper')))`},
   {name:'新正式名单的永久身份与审核快照一致',sql:`SELECT COUNT(*) AS issue_count FROM team_player p JOIN team_roster_batches b ON b.id=p.roster_batch_id LEFT JOIN imported_player_identities i ON i.id=p.import_person_id WHERE b.source_type IN ('online','admin_import') AND IF(p.import_person_id IS NOT NULL,
     i.id IS NULL OR i.season_id<>b.season_id OR NOT(p.player_account_id<=>i.player_id) OR NOT(i.student_id<=>JSON_UNQUOTE(JSON_EXTRACT(p.profile_snapshot,'$.student_id'))) OR NOT(i.name<=>JSON_UNQUOTE(JSON_EXTRACT(p.profile_snapshot,'$.name'))),
     p.player_account_id IS NULL OR JSON_EXTRACT(p.profile_snapshot,'$.id') IS NULL OR CAST(JSON_UNQUOTE(JSON_EXTRACT(p.profile_snapshot,'$.id')) AS UNSIGNED)<>p.player_account_id)`},
@@ -41,7 +41,7 @@ const checks = [
       JOIN season_competitions c ON c.id=a.competition_id LEFT JOIN team t ON t.id=a.team_id
       WHERE a.kind IN ('initial','roster_change') AND a.status='approved' AND
       (t.id IS NULL OR t.season_id<>a.season_id OR t.league_type<>c.league_type
-       OR (SELECT COUNT(*) FROM team_roster_batches b WHERE b.application_id=a.id AND b.team_id=a.team_id AND b.source_type=a.source_type)<>(SELECT COUNT(*) FROM team_application_events e WHERE e.application_id=a.id AND e.operation='approved'))`
+       OR (SELECT COUNT(*) FROM team_roster_batches b WHERE b.application_id=a.id AND b.team_id=a.team_id AND b.source_type=a.source_type)<>(SELECT COUNT(*) FROM team_application_events e WHERE e.application_id=a.id AND e.operation IN ('approved','admin_updated')))`
   },
   {
     name: '球队报名撤销有原因、审计事件并保留球队',
@@ -193,9 +193,15 @@ const checks = [
         FROM match_goals
         GROUP BY report_id, credited_team_id
       ) ag ON ag.report_id = r.id AND ag.credited_team_id = s.team_b_id
-      WHERE r.home_score <> COALESCE(hg.goal_count, 0)
-         OR r.away_score <> COALESCE(ag.goal_count, 0)
+      WHERE r.forfeit_side = 'none' AND (r.home_score <> COALESCE(hg.goal_count, 0)
+         OR r.away_score <> COALESCE(ag.goal_count, 0))
     `
+  },
+  {
+    name: '弃权报告无球员进球及点球大战比分',
+    sql: `SELECT COUNT(*) AS issue_count FROM match_reports r
+      WHERE r.forfeit_side <> 'none' AND (r.home_penalty_score <> 0 OR r.away_penalty_score <> 0
+        OR EXISTS (SELECT 1 FROM match_goals g WHERE g.report_id=r.id))`
   },
   {
     name: '红黄牌球员属于记录中的队伍',
@@ -265,21 +271,24 @@ const checks = [
       (assistant1_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=s.id AND a.role='assistant1')) OR
       (assistant2_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=s.id AND a.role='assistant2')) OR
       (fourth_official_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=s.id AND a.role='fourth')) OR
+      (second_referee_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=s.id AND a.role='second')) OR
+      (timekeeper_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=s.id AND a.role='timekeeper')) OR
       (supervisor_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=s.id AND a.role='supervisor'))`
   }, {
     name: '统一岗位与旧系统账号兼容列一致',
     sql: `SELECT COUNT(*) AS issue_count FROM match_official_assignments a JOIN match_schedules s ON s.id=a.schedule_id
-      WHERE NOT (a.referee_id <=> CASE a.role WHEN 'main' THEN s.main_referee_id WHEN 'assistant1' THEN s.assistant1_id WHEN 'assistant2' THEN s.assistant2_id WHEN 'fourth' THEN s.fourth_official_id WHEN 'supervisor' THEN s.supervisor_id END)
-      OR NOT (a.name_snapshot <=> CASE a.role WHEN 'main' THEN s.main_referee_name_snapshot WHEN 'assistant1' THEN s.assistant1_name_snapshot WHEN 'assistant2' THEN s.assistant2_name_snapshot WHEN 'fourth' THEN s.fourth_official_name_snapshot WHEN 'supervisor' THEN s.supervisor_name_snapshot END)`
+      WHERE NOT (a.referee_id <=> CASE a.role WHEN 'main' THEN s.main_referee_id WHEN 'assistant1' THEN s.assistant1_id WHEN 'assistant2' THEN s.assistant2_id WHEN 'fourth' THEN s.fourth_official_id WHEN 'second' THEN s.second_referee_id WHEN 'timekeeper' THEN s.timekeeper_id WHEN 'supervisor' THEN s.supervisor_id END)
+      OR NOT (a.name_snapshot <=> CASE a.role WHEN 'main' THEN s.main_referee_name_snapshot WHEN 'assistant1' THEN s.assistant1_name_snapshot WHEN 'assistant2' THEN s.assistant2_name_snapshot WHEN 'fourth' THEN s.fourth_official_name_snapshot WHEN 'second' THEN s.second_referee_name_snapshot WHEN 'timekeeper' THEN s.timekeeper_name_snapshot WHEN 'supervisor' THEN s.supervisor_name_snapshot END)`
   }, {
     name: '不需要裁判监督的比赛没有裁判监督岗位且岗位姓名非空',
-    sql: `SELECT COUNT(*) AS issue_count FROM match_official_assignments a JOIN match_schedules s ON s.id=a.schedule_id WHERE (a.role='supervisor' AND s.supervisor_required=0) OR (a.role='fourth' AND s.fourth_required=0) OR NULLIF(TRIM(a.name_snapshot),'') IS NULL`
+    sql: `SELECT COUNT(*) AS issue_count FROM match_official_assignments a JOIN match_schedules s ON s.id=a.schedule_id WHERE (a.role='supervisor' AND s.supervisor_required=0) OR (a.role='fourth' AND s.fourth_required=0) OR (s.futsal=1 AND a.role IN ('assistant1','assistant2','fourth')) OR (s.futsal=0 AND a.role IN ('second','timekeeper')) OR NULLIF(TRIM(a.name_snapshot),'') IS NULL`
   }, {
     name: '报告操作事件归属正确负责人和分区',
-    sql: `SELECT COUNT(*) AS issue_count FROM report_actor_events e JOIN match_reports r ON r.id=e.report_id JOIN match_official_assignments a ON a.id=e.owner_assignment_id
-      WHERE a.schedule_id<>r.schedule_id OR a.role<>IF(e.operation IN ('save_supervisor','submit_supervisor'),'supervisor','main')
-      OR (e.source_type='admin_proxy' AND (a.role<>'main' OR a.source_type<>'external'))
-      OR (e.source_type='referee' AND NOT (e.actor_referee_id <=> a.referee_id))`
+    sql: `SELECT COUNT(*) AS issue_count FROM report_actor_events e JOIN match_reports r ON r.id=e.report_id LEFT JOIN match_official_assignments a ON a.id=e.owner_assignment_id
+      WHERE e.owner_assignment_snapshot IS NULL OR (e.owner_assignment_id IS NOT NULL AND (a.id IS NULL OR a.schedule_id<>r.schedule_id))
+      OR JSON_UNQUOTE(JSON_EXTRACT(e.owner_assignment_snapshot,'$.role'))<>IF(e.operation IN ('save_supervisor','submit_supervisor'),'supervisor','main')
+      OR (e.source_type='admin_proxy' AND JSON_UNQUOTE(JSON_EXTRACT(e.owner_assignment_snapshot,'$.source_type'))<>'external')
+      OR (e.source_type='referee' AND NOT (CAST(e.actor_referee_id AS CHAR) <=> JSON_UNQUOTE(JSON_EXTRACT(e.owner_assignment_snapshot,'$.referee_id'))))`
   }, {
     name: '报告分区修订号与追加历史一致',
     sql: `SELECT COUNT(*) AS issue_count FROM report_section_states s
@@ -287,9 +296,9 @@ const checks = [
       OR s.version_no <> COALESCE((SELECT MAX(h.version_no) FROM report_section_history h WHERE h.report_id=s.report_id AND h.section=s.section),0)`
   }, {
     name: '管理员退回与修订均有原因',
-    sql: `SELECT COUNT(*) AS issue_count FROM report_section_history WHERE source_type='admin_revision' AND NULLIF(TRIM(reason),'') IS NULL`
+    sql: `SELECT COUNT(*) AS issue_count FROM report_section_history WHERE source_type IN ('admin_revision','admin_assignment') AND NULLIF(TRIM(reason),'') IS NULL`
   }, {
-    name: '退回分区有原因且不解除岗位锁定',
+    name: '退回分区保留原因与报告开始时间',
     sql: `SELECT COUNT(*) AS issue_count FROM match_reports r
       LEFT JOIN report_section_states m ON m.report_id=r.id AND m.section='main'
       LEFT JOIN report_section_states s ON s.report_id=r.id AND s.section='supervisor'

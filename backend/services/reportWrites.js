@@ -54,8 +54,8 @@ module.exports = {
       if (!adminAction) {
         const [[person]] = await c.execute(viewer.role === 'admin' ? 'SELECT username AS name FROM admin WHERE id = ?' : 'SELECT name FROM referee WHERE id = ?', [viewer.id]);
         await c.execute(`INSERT INTO report_actor_events
-        (report_id,owner_assignment_id,operation,source_type,actor_referee_id,actor_admin_id,actor_name_snapshot)
-        VALUES (?,?,?,?,?,?,?)`, [schedule.report.id,owner.id,operation,isProxy ? 'admin_proxy' : 'referee',isProxy ? null : viewer.id,isProxy ? viewer.id : null,person.name]);
+        (report_id,owner_assignment_id,operation,source_type,actor_referee_id,actor_admin_id,actor_name_snapshot,owner_assignment_snapshot)
+        VALUES (?,?,?,?,?,?,?,?)`, [schedule.report.id,owner.id,operation,isProxy ? 'admin_proxy' : 'referee',isProxy ? null : viewer.id,isProxy ? viewer.id : null,person.name,JSON.stringify(owner)]);
       }
       // 在提交前构造回显：读取失败会整体回滚，避免已存图片被路由误当失败清理。
       response = await this.getReportByScheduleId(scheduleId, viewer, c);
@@ -85,10 +85,11 @@ module.exports = {
   async writeMainContent(c, schedule, id, body) {
       if (Object.hasOwn(body, 'stats') && !Array.isArray(body.stats)) throw createBusinessError('stats 必须是数组');
       const state = await this.validateMainReportState(c, schedule, id, body);
-      await c.execute(`UPDATE match_reports SET home_score=?, away_score=?, home_penalty_score=?, away_penalty_score=?, main_report_started_at=COALESCE(main_report_started_at,NOW()) WHERE id=?`, [state.home_score,state.away_score,state.home_penalty_score,state.away_penalty_score,id]);
+      await c.execute(`UPDATE match_reports SET forfeit_side=?, home_score=?, away_score=?, home_penalty_score=?, away_penalty_score=?, main_report_started_at=COALESCE(main_report_started_at,NOW()) WHERE id=?`, [state.forfeit_side,state.home_score,state.away_score,state.home_penalty_score,state.away_penalty_score,id]);
       const seen = new Set();
       for (const stat of body.stats || []) {
-        if (!stat || !['main','assistant1','assistant2'].includes(stat.role) || seen.has(stat.role)) throw createBusinessError('统计岗位无效或重复');
+        if (!stat || !(schedule.futsal?['main','second']:['main','assistant1','assistant2']).includes(stat.role) || seen.has(stat.role)) throw createBusinessError('统计岗位无效或重复');
+        if(schedule.futsal&&['offside_flag_count','assist_count'].some(f=>stat[f]!==undefined&&stat[f]!==null&&stat[f]!==''))throw createBusinessError('五人制不填写越位举旗或协助次数');
         seen.add(stat.role);
         const assigned = target(schedule, stat.role);
         // 模板始终包含三个岗位；空岗位的空数据不落库，非空数据明确拒绝。
@@ -173,7 +174,7 @@ module.exports = {
   async reviseReportSection(scheduleId,section,viewer,body = {}) {
     history.sectionPrefix(section);
     if (Object.keys(body).some(k=>!['reason','data'].includes(k)) || !body.data || typeof body.data !== 'object' || Array.isArray(body.data)) throw createBusinessError('修订必须提交原因和对应分区内容');
-    const fields = section === 'main' ? ['home_score','away_score','home_penalty_score','away_penalty_score','stats','cards','goals'] : ['reviews'];
+    const fields = section === 'main' ? ['forfeit_side','home_score','away_score','home_penalty_score','away_penalty_score','stats','cards','goals'] : ['reviews'];
     if (!Object.keys(body.data).length || Object.keys(body.data).some(k=>!fields.includes(k))) throw createBusinessError('修订只能更改对应分区内容，不能修改状态、比赛或裁判岗位');
     return this.withReportWrite(scheduleId,viewer,section,'revise',async(c,schedule,id)=>{
       if (section === 'main') await this.writeMainContent(c,schedule,id,body.data);

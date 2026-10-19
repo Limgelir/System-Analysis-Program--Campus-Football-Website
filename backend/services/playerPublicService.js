@@ -11,7 +11,7 @@ async function teams(query={}){
   return (await w.sql(pool,`SELECT t.id,t.team_name,t.league_type,t.season_id,s.season_name FROM team t JOIN seasons s ON s.id=t.season_id WHERE ${filters.join(' AND ')} ORDER BY t.league_type,t.team_name`,args))[0];
 }
 async function matches(teamId,c=pool,playerId=null){
-  const [rows]=await w.sql(c,`SELECT m.id,m.match_date,TIME_FORMAT(m.match_time,'%H:%i') AS match_time,m.venue,m.venue_detail,m.field_order,m.match_type,m.team_a_id,m.team_b_id,
+  const [rows]=await w.sql(c,`SELECT m.id,m.match_date,TIME_FORMAT(m.match_time,'%H:%i') AS match_time,TIME_FORMAT(m.match_end_time,'%H:%i') AS match_end_time,m.venue,m.venue_detail,m.field_order,m.match_type,m.team_a_id,m.team_b_id,
     COALESCE(m.team_a_name_snapshot,a.team_name) AS home_name,COALESCE(m.team_b_name_snapshot,b.team_name) AS away_name,
     r.main_report_status,p.result_snapshot,p.version_no,p.published_at FROM match_schedules m
     JOIN team a ON a.id=m.team_a_id JOIN team b ON b.id=m.team_b_id

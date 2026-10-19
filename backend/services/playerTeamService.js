@@ -26,7 +26,7 @@ async function otherTeams(c,a){
 async function automaticReview(c,a,rows){
   let correction_allowed=correctionAllowed(a)||a.status==='pending'&&a.auto_review?.correction_allowed===true;
   if(a.status==='pending'&&!a.auto_review&&a.return_snapshot){
-    const [[last]]=await w.sql(c,"SELECT operation FROM team_application_events WHERE application_id=? AND operation IN ('returned','withdrawn') ORDER BY revision DESC LIMIT 1",[a.id]);
+    const [[last]]=await w.sql(c,"SELECT e.operation FROM team_application_events e WHERE e.application_id=? AND e.operation IN ('returned','withdrawn') AND NOT EXISTS (SELECT 1 FROM team_application_events u WHERE u.application_id=e.application_id AND u.operation='return_undone' AND JSON_EXTRACT(u.before_snapshot,'$.revision')=e.revision) ORDER BY e.revision DESC LIMIT 1",[a.id]);
     correction_allowed=last?.operation==='returned';
   }
   const result=a.source_type==='admin_import'?{passed:true,exempt:true,checks:[],failures:[]}:automatic.fromMembers(a,rows);
@@ -83,7 +83,7 @@ async function approvedCounts(c,a){const [rows]=await w.sql(c,`SELECT p.player_a
 async function reviewContext(c,a,rows){const counts=await approvedCounts(c,a),participations=await otherTeams(c,a);const [[manager]]=a.manager_player_id?await w.sql(c,'SELECT id,student_id,name,college,gender,is_active,revision FROM player_accounts WHERE id=? FOR SHARE',[a.manager_player_id]):await w.sql(c,'SELECT NULL AS id,student_id,name,NULL AS college,0 AS is_active FROM imported_player_identities WHERE id=?',[a.manager_import_person_id]);const inputs=rows.map(m=>({id:m.id,player_id:m.player_id,name:m.name,student_id:m.student_id,college:m.college,gender:m.gender,account_revision:m.account_revision,account_active:m.account_active,qualification_status:m.qualification_status,qualification_revision:m.qualification_revision,review_profile_snapshot:m.review_profile_snapshot,approved_teams:participations.get(m.player_id)||[],approved_team_count:counts.get(m.player_id)||0}));const [[team]]=a.team_id?await w.sql(c,'SELECT revision FROM team WHERE id=?',[a.team_id]):[[]];return {counts,manager,participations,token:r.digest([COLLEGE_RULE_VERSION,a.id,a.revision,a.competition_revision,team?.revision,manager,inputs])};}
 async function detailIn(c,id,user){
   const {a,rows,access}=await authorized(c,id,user);const manages=access.manages||user.role==='admin';const review=await reviewContext(c,a,rows);
-  const current=await snapshot(c,a);const [replacements]=await w.sql(c,'SELECT member_id FROM team_return_replacements WHERE application_id=? AND return_revision=(SELECT MAX(revision) FROM team_application_events WHERE application_id=? AND operation=\'returned\')',[id,id]);
+  const current=await snapshot(c,a);const [replacements]=await w.sql(c,'SELECT member_id FROM team_return_replacements WHERE application_id=? AND return_revision=COALESCE((SELECT JSON_EXTRACT(return_snapshot,\'$.revision\')+1 FROM team_applications WHERE id=?),0)',[id,id]);
   // 权限按当前角色计算；普通队员不读取他人的学号、审核快照及内部操作记录。
   const outputMembers=rows.map(m=>({...memberSnapshot(m),gender:m.gender||null,is_captain:a.team_id&&a.status==='approved'?m.player_id?m.player_id===access.captain:Boolean(m.is_captain):Boolean(m.is_captain),profile_snapshot:manages?m.profile_snapshot:undefined,name:a.is_active?m.name:m.profile_snapshot.name,college:a.is_active?m.college:m.profile_snapshot.college,student_id:manages||m.player_id===user.id?m.student_id:undefined,qualification_status:manages?m.qualification_status:undefined,account_active:manages?Boolean(m.account_active):undefined,approved_team_count:user.role==='admin'?review.counts.get(m.player_id)||0:undefined,approved_teams:user.role==='admin'?review.participations.get(m.player_id)||[]:undefined,account_college:manages?m.college||null:undefined,auto_review_college:manages&&a.source_type!=='admin_import'?resolveCollege(m.college)||null:undefined,reviewed_college:manages?m.review_profile_snapshot?.college||null:undefined,registration_id:user.role==='admin'?m.registration_id:undefined}));
   const manager=access.manager===review.manager?.id?review.manager:access.manager?(await w.sql(c,'SELECT id,student_id,name,college,gender,revision,is_active FROM player_accounts WHERE id=?',[access.manager]))[0][0]:(await w.sql(c,'SELECT NULL AS id,i.student_id,i.name FROM team t JOIN imported_player_identities i ON i.id=t.manager_import_person_id WHERE t.id=?',[a.team_id]))[0][0];
@@ -95,6 +95,11 @@ async function detailIn(c,id,user){
     correction:manages?{restricted:correctionAllowed(a)&&window(a)!=='open',replaceable_member_ids:replacements.map(v=>v.member_id),member_comments:a.member_comments||{},differences:r.differences(a.return_snapshot||a.base_snapshot,current)}:null};
   if(manages){const [events]=await w.sql(c,'SELECT id,revision,operation,actor_player_id,actor_admin_id,reason,before_snapshot,after_snapshot,created_at FROM team_application_events WHERE application_id=? ORDER BY revision DESC LIMIT 100',[id]);data.events=events.map(e=>({...e,created_at:w.chinaIso(e.created_at),changes:r.differences(e.before_snapshot,e.after_snapshot)}));}
   if(user.role==='admin')data.review_token=review.token;
+  if(user.role==='admin'){
+    const canUndo=await require('./teamOperationUndoService').available(c,a);
+    data.permissions.can_undo_return=canUndo&&a.admin_undo.operation==='returned';
+    data.permissions.can_undo_revoke=canUndo&&a.admin_undo.operation==='revoked';
+  }
   return tags.present(a,data);
 }
 const detail=(id,user)=>transaction(c=>detailIn(c,rules.id(id),user));
@@ -116,7 +121,7 @@ async function save(id,user,body,revision){const data=r.normalize(body);return t
   await require('./rosterChangeService').assertBase(c,a);
   for(const m of data.members)for(const tag of tags.TAGS)if(!tags.enabled(a,tag.key))m[tag.flag]=Boolean(rows.find(old=>old.id===m.id&&old.player_id===m.player_id)?.[tag.flag]);
   for(const m of data.members)if(m.id&&!rows.some(old=>old.id===m.id))throw rules.businessError('名单行已失效或不属于本申请',409);
-  if(window(a)!=='open'){const [allowed]=await w.sql(c,'SELECT member_id FROM team_return_replacements WHERE application_id=? AND return_revision=(SELECT MAX(revision) FROM team_application_events WHERE application_id=? AND operation=\'returned\')',[a.id,a.id]);r.correction(a.return_snapshot,data,allowed.map(v=>v.member_id));}
+  if(window(a)!=='open'){const [allowed]=await w.sql(c,'SELECT member_id FROM team_return_replacements WHERE application_id=? AND return_revision=COALESCE((SELECT JSON_EXTRACT(return_snapshot,\'$.revision\')+1 FROM team_applications WHERE id=?),0)',[a.id,a.id]);r.correction(a.return_snapshot,data,allowed.map(v=>v.member_id));}
   const before=await snapshot(c,a),profiles=new Map();
   for(const m of [...data.members].sort((a,b)=>a.player_id-b.player_id)){const old=rows.find(v=>v.id===m.id);if(!old||old.player_id!==m.player_id)await eligibility.assertEligible(c,m.player_id,a.season_id);const [[p]]=await w.sql(c,'SELECT id,student_id,name,college,gender FROM player_accounts WHERE id=? FOR SHARE',[m.player_id]);if(!p)throw rules.businessError('球员账号不存在');profiles.set(m.player_id,w.accountSnapshot(p));}
   // 保留稳定名单行及退回权限引用；先释放当前唯一键，支持交换号码和队长。
@@ -129,16 +134,16 @@ async function save(id,user,body,revision){const data=r.normalize(body);return t
   return response(c,after,user);
 });}
 
-async function checkSubmission(c,a){
+async function checkSubmission(c,a,{skipPlayerEligibility=false}={}){
   await require('./rosterChangeService').assertBase(c,a);
   const rows=await members(c,a.id,true);if(a.source_type!=='admin_import'&&rows.some(m=>!m.player_id))throw rules.businessError('当前名单存在未关联账号的球员，请先完成注册关联，或移除后按学号重新添加');const data=r.normalize({team_name:a.team_name,shirt_color:a.shirt_color,shorts_color:a.shorts_color,socks_color:a.socks_color,members:rows.map(m=>({...memberSnapshot(m),player_id:a.source_type==='admin_import'?m.id:m.player_id})).map(({profile_snapshot,import_person_id,...m})=>m)},{complete:true});
-  if(a.source_type!=='admin_import'&&rows.some(m=>!m.gender))throw rules.businessError('队伍中有人未选择性别，无法提交队伍创建申请：'+rows.filter(m=>!m.gender).map(m=>m.name).join('、'),400,'TEAM_GENDER_REQUIRED');
-  if(a.source_type!=='admin_import')for(const m of [...rows].sort((a,b)=>a.player_id-b.player_id))await eligibility.assertEligible(c,m.player_id,a.season_id);
-  const [[manager]]=await w.sql(c,'SELECT is_active FROM player_accounts WHERE id=? FOR SHARE',[a.manager_player_id]);if(a.source_type!=='admin_import'&&!manager?.is_active)throw rules.businessError('球队负责人账号已停用，请先处理负责人账号',409);
+  if(!skipPlayerEligibility&&a.source_type!=='admin_import'&&rows.some(m=>!m.gender))throw rules.businessError('队伍中有人未选择性别，无法提交队伍创建申请：'+rows.filter(m=>!m.gender).map(m=>m.name).join('、'),400,'TEAM_GENDER_REQUIRED');
+  if(!skipPlayerEligibility&&a.source_type!=='admin_import')for(const m of [...rows].sort((a,b)=>a.player_id-b.player_id))await eligibility.assertEligible(c,m.player_id,a.season_id);
+  const [[manager]]=await w.sql(c,'SELECT is_active FROM player_accounts WHERE id=? FOR SHARE',[a.manager_player_id]);if(!skipPlayerEligibility&&a.source_type!=='admin_import'&&!manager?.is_active)throw rules.businessError('球队负责人账号已停用，请先处理负责人账号',409);
   const [[existing]]=await w.sql(c,'SELECT id FROM team WHERE season_id=? AND league_type=? AND team_name=? AND id<>?',[a.season_id,a.league_type,a.team_name,a.team_id||0]);if(existing)throw rules.businessError('本赛季该赛事已有同名正式球队，请修改队名',409,'TEAM_NAME_TAKEN');return {data,rows,autoReview:await automaticReview(c,a,rows)};
 }
 async function submit(id,user,revision,{manual=false}={}){return transaction(async c=>{const a=await lock(c,id,user);await authorized(c,id,user,{edit:true});w.expectRevision(a.revision,revision);if(!editable(a))throw rules.businessError('当前不在球队报名开放时间，或申请已经提交',409,'TEAM_WINDOW_CLOSED');if(manual&&a.status!=='auto_failed')throw rules.businessError('请先完成自动审核，再申请人工审核',409);const {data,autoReview}=await checkSubmission(c,a);
-  if(window(a)!=='open'){const [allowed]=await w.sql(c,'SELECT member_id FROM team_return_replacements WHERE application_id=? AND return_revision=(SELECT MAX(revision) FROM team_application_events WHERE application_id=? AND operation=\'returned\')',[a.id,a.id]);r.correction(a.return_snapshot,data,allowed.map(v=>v.member_id));}
+  if(window(a)!=='open'){const [allowed]=await w.sql(c,'SELECT member_id FROM team_return_replacements WHERE application_id=? AND return_revision=COALESCE((SELECT JSON_EXTRACT(return_snapshot,\'$.revision\')+1 FROM team_applications WHERE id=?),0)',[a.id,a.id]);r.correction(a.return_snapshot,data,allowed.map(v=>v.member_id));}
   if(!autoReview.passed&&!manual)return recordAutoFailure(c,a,user,autoReview);
    if(manual)autoReview.manual_requested=true;
    const before=await snapshot(c,a);await c.execute('UPDATE team_application_members m JOIN player_accounts p ON p.id=m.player_id SET m.profile_snapshot=JSON_OBJECT(\'id\',p.id,\'student_id\',p.student_id,\'name\',p.name,\'college\',p.college,\'gender\',p.gender) WHERE m.application_id=? AND m.is_removed=0',[a.id]);

@@ -1,8 +1,8 @@
 const { createBusinessError } = require('./scheduleValidator');
-const INTENTIONS = Object.freeze(['main','assistant','fourth','supervisor']);
+const INTENTIONS = Object.freeze(['main','assistant','fourth','second','timekeeper','supervisor']);
 function parseIntentions(value) {
   if (!Array.isArray(value) || !value.length || value.length > 4 || value.some(v => !INTENTIONS.includes(v)) || new Set(value).size !== value.length) {
-    throw createBusinessError('请选择至少一项有效意向：裁判员、助理裁判员、第四官员、裁判监督', { code:'SIGNUP_INTENTIONS_INVALID' });
+    throw createBusinessError('请选择至少一项有效意向：裁判员、助理裁判员、第四官员、第二裁判员、计时员、裁判监督', { code:'SIGNUP_INTENTIONS_INVALID' });
   }
   return INTENTIONS.filter(v => value.includes(v));
 }

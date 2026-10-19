@@ -8,8 +8,8 @@ function componentFile(file,globals={}) {
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .+$/gm,'').replace('export default','const component =')
   return vm.runInNewContext(script+'; component',{console,ReportHistoryPanel:{},MatchDiscipline:{},ReportSnapshot:{},alert:()=>{},window:{confirm:()=>true},...globals})
 }
-function report(api={}) {
-  const component=componentFile('pages/RefereeReportDetail.vue',{reportAPI:api})
+function report(api={},globals={}) {
+  const component=componentFile('pages/RefereeReportDetail.vue',{reportAPI:api,...globals})
   const ctx={...component.data(),$route:{name:'AdminScheduleReportDetail'},schedule:{id:7,officials:[{role:'main',source_type:'system'},{role:'supervisor',source_type:'system'}]},report:{main_report_status:'submitted',supervisor_review_status:'submitted'},viewerPermissions:{can_admin_revise:true,can_return_main:true,can_return_supervisor:true},sections:{main:{revision:5,version_no:1},supervisor:{revision:3,version_no:1}}}
   for(const [name,fn] of Object.entries(component.methods))ctx[name]=fn.bind(ctx)
   for(const [name,fn] of Object.entries(component.computed))Object.defineProperty(ctx,name,{get:fn.bind(ctx)})
@@ -98,4 +98,36 @@ test('管理员代填非系统裁判监督使用专用接口，提交后锁定�
  ctx.viewerPermissions={can_edit_supervisor:true,can_proxy_supervisor:true};ctx.report.supervisor_review_status='draft';ctx.form.reviews=[{target_role:'main',score:8}];ctx.loadReport=async()=>{};
  assert.equal(ctx.canEditSupervisorSection,true);assert.equal(ctx.isAdminReadonly,false);await ctx.saveSupervisorReport();assert.equal(called,1);
  ctx.report.supervisor_review_status='submitted';assert.equal(ctx.canEditSupervisorSection,false);
+});
+
+test('弃权切换取消保留输入，确认清空进球和点球，保留其余报告内容',()=>{
+  let confirmed=false
+  const ctx=report({}, {window:{confirm:()=>confirmed}})
+  ctx.revisionSection='main';ctx.schedule.team_a_id=1;ctx.schedule.team_b_id=2
+  ctx.form.goals=[{team_player_id:3,credited_team_id:1}];ctx.form.cards=[{team_player_id:4}]
+  ctx.form.home_score=1;ctx.form.home_penalty_score=5;ctx.form.stats.main.running_distance_m=123
+  const event={target:{value:'home'}}
+  ctx.handleForfeitChange(event)
+  assert.equal(event.target.value,'none');assert.equal(ctx.form.home_score,1);assert.equal(ctx.form.goals.length,1)
+  confirmed=true;event.target.value='home';ctx.handleForfeitChange(event)
+  assert.equal(ctx.form.forfeit_side,'home');assert.equal(ctx.form.home_score,0);assert.equal(ctx.form.away_score,3)
+  assert.equal(ctx.form.goals.length,0);assert.equal(ctx.form.home_penalty_score,0);assert.equal(ctx.form.cards.length,1);assert.equal(ctx.form.stats.main.running_distance_m,123)
+  ctx.form.away_score=5;ctx.handleScoreChange();assert.equal(ctx.form.goals.length,0)
+  assert.equal(ctx.buildMainReportPayload().away_score,5)
+  // 重新加载报告使用同一生成入口，也不能再生成虚构进球。
+  ctx.applyGoalsForScores(0,5,{skipConfirm:true});assert.equal(ctx.form.goals.length,0)
+  ctx.handleForfeitChange({target:{value:'away'}});assert.equal(ctx.form.home_score,3);assert.equal(ctx.form.away_score,0)
+});
+
+test('双方弃权必须手动填分；取消弃权恢复进球项，锁定报告不允许切换',()=>{
+  const ctx=report();ctx.revisionSection='main';ctx.schedule.team_a_id=1;ctx.schedule.team_b_id=2
+  ctx.handleForfeitChange({target:{value:'both'}})
+  assert.equal(ctx.form.home_score,null);assert.equal(ctx.form.away_score,null)
+  assert.throws(()=>ctx.buildMainReportPayload(),/请填写双方弃权判定比分/)
+  ctx.form.home_score=0;ctx.form.away_score=3;ctx.handleScoreChange()
+  assert.equal(ctx.buildMainReportPayload().forfeit_side,'both');assert.equal(ctx.form.goals.length,0)
+  ctx.handleForfeitChange({target:{value:'none'}});assert.equal(ctx.form.goals.length,3)
+  ctx.revisionSection=null
+  const event={target:{value:'home'}};ctx.handleForfeitChange(event)
+  assert.equal(event.target.value,'none');assert.equal(ctx.form.goals.length,3)
 });

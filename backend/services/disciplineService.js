@@ -111,4 +111,15 @@ async function forMatch(id,c=pool){
     suspensions:result.matches.find(v=>v.schedule_id===m.id)?.suspensions||[],
     needs_review:result.warnings.some(v=>[m.team_a_id,m.team_b_id].includes(Number(v.key.split(':')[0])))};
 }
-module.exports={afterReport,summary,mutate,projections,forMatch};
+async function forSheet(id,c=pool){
+  const current=await forMatch(id,c);
+  if(!current.completed)return current;
+  // Published games have already consumed their bans. Their stored service
+  // receipts describe that game's bans, not today's remaining balance.
+  const [[comp]]=await c.execute('SELECT c.id FROM season_competitions c JOIN match_schedules m ON m.season_id=c.season_id AND m.match_type=c.league_type WHERE m.id=?',[id]);
+  if(!comp)return {...current,suspensions:[]};
+  const log=await events(c,comp.id);
+  const report=log.find(e=>e.operation==='report'&&Number(e.payload.schedule_id)===Number(id));
+  return {...current,suspensions:report?.payload.served||[]};
+}
+module.exports={afterReport,summary,mutate,projections,forMatch,forSheet};

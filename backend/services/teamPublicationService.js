@@ -3,10 +3,19 @@ const rules = require('../utils/playerRules');
 const r = require('../utils/teamApplicationRules');
 const { businessDate } = require('../utils/competitionTime');
 
-async function publish(c, a, user, {automaticOverride=false}={}) {
+async function publish(c, a, user, {automaticOverride=false,adminDirectEdit=false}={}) {
   const service = require('./playerTeamService');
-  const {rows,autoReview} = await service.checkSubmission(c,a);
-  if(!autoReview.passed&&!(automaticOverride&&user.role==='admin'&&(a.status==='auto_failed'||a.status==='pending'&&a.auto_review?.manual_requested)))throw rules.businessError('自动审核未通过，不能发布正式名单',409,'TEAM_AUTO_REVIEW_FAILED');
+  // 仅管理员编辑入口在同一事务中新建的正式球队变更可使用此选项，普通报名仍须审核。
+  if(adminDirectEdit&&(user.role!=='admin'||!a.team_id||a.kind!=='roster_change'||a.status!=='draft'))throw rules.businessError('只有管理员直接编辑正式球队可以跳过审核',403);
+  const {rows,autoReview} = await service.checkSubmission(c,a,{skipPlayerEligibility:adminDirectEdit});
+  if(!autoReview.passed&&!adminDirectEdit&&!(automaticOverride&&user.role==='admin'&&(a.status==='auto_failed'||a.status==='pending'&&a.auto_review?.manual_requested)))throw rules.businessError('自动审核未通过，不能发布正式名单',409,'TEAM_AUTO_REVIEW_FAILED');
+  if(adminDirectEdit){
+    autoReview.exempt=true;
+    autoReview.exemption='admin_direct_edit';
+    autoReview.eligibility_exempt=true;
+    autoReview.override={reason:'管理员直接修改球队，跳过自动审核和球员资格限制',admin_id:user.id,approved_at:w.chinaIso(w.chinaSql())};
+    await c.execute('UPDATE team_applications SET auto_review=? WHERE id=?',[JSON.stringify(autoReview),a.id]);
+  }
   let teamId = a.team_id;
   const previousBatch=teamId?await require('./playerRosterService').effectiveBatch(teamId,undefined,c):null;
   const previousPlayerIds=previousBatch?(await require('./playerRosterService').roster(previousBatch.id,{connection:c})).map(m=>m.player_account_id).filter(Boolean):[];
@@ -16,6 +25,12 @@ async function publish(c, a, user, {automaticOverride=false}={}) {
     if (teamId) {
       await require('./matchRosterService').preserveTeamMatches(c,teamId);
       await c.execute('UPDATE team SET team_name=?,manager_player_id=?,captain_player_id=?,shirt_color=?,shorts_color=?,socks_color=?,manager_import_person_id=?,registration_revoked=0,revision=revision+1 WHERE id=?',[...values,teamId]);
+      // 赛程各入口读取队名快照，改名时同步更新，比赛身份及历史报告留档不变。
+      await c.execute(`UPDATE match_schedules SET
+        team_a_name_snapshot=IF(team_a_id=?, ?, team_a_name_snapshot),
+        team_b_name_snapshot=IF(team_b_id=?, ?, team_b_name_snapshot),schedule_revision=schedule_revision+1
+        WHERE (team_a_id=? AND NOT(team_a_name_snapshot <=> ?)) OR (team_b_id=? AND NOT(team_b_name_snapshot <=> ?))`,
+      [teamId,a.team_name,teamId,a.team_name,teamId,a.team_name,teamId,a.team_name]);
     } else {
       const [insert] = await c.execute('INSERT INTO team (season_id,league_type,team_name,manager_player_id,captain_player_id,shirt_color,shorts_color,socks_color,manager_import_person_id,revision) VALUES (?,?,?,?,?,?,?,?,?,1)',[a.season_id,a.league_type,...values]);
       teamId=insert.insertId;

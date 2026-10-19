@@ -25,3 +25,13 @@ test('不同时区保留业务日期和开球分钟，不隐式跨日', () => {
     assert.equal(result.match_time, '00:00');
   }
 });
+
+test('比赛时间段拆分起止时间，拒绝倒序、跨日及冲突的结束时间', () => {
+  assert.deepEqual(require('../utils/matchTime').parseMatchTime('15:00-16:00'), { match_time: '15:00', match_end_time: '16:00' });
+  assert.equal(validate({ ...base, match_time: '00:00-01:00' }).match_end_time, '01:00');
+  assert.equal(validate({ ...base, match_time: '15:00' }).match_end_time, null);
+  assert.equal(validate({ ...base, match_time: '15:00', match_end_time: '16:00' }).match_end_time, '16:00');
+  for (const match_time of ['16:00-15:00','15:00-15:00','23:00-01:00','15:00-24:00','15:00-16:00-17:00','15:00-','15:00 -16:00','15:00-16:00\n']) assert.throws(() => validate({ ...base, match_time }), { code: 'MATCH_TIME_INVALID' });
+  assert.throws(() => validate({ ...base, match_time: '15:00-16:00', match_end_time: '17:00' }), { code: 'MATCH_TIME_INVALID' });
+  assert.equal(require('../utils/scheduleDeletion').kickoffTime(validate({ ...base, match_time: '15:00-16:00' })), '2026-12-31 15:00:00');
+});

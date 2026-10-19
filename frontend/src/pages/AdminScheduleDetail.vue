@@ -35,7 +35,7 @@
             <div><span class="label">赛季：</span>{{ schedule.season_name || schedule.season_code || '-' }}</div>
             <div><span class="label">比赛类型：</span>{{ schedule.match_type || '-' }}</div>
             <div><span class="label">主队 / 客队：</span>{{ schedule.team_a_name_snapshot || '-' }} vs {{ schedule.team_b_name_snapshot || '-' }}</div>
-            <div><span class="label">比赛日期：</span>{{ displayDate(schedule.match_date) }} · {{ displayMatchTime(schedule.match_time) }}</div>
+            <div><span class="label">比赛日期：</span>{{ displayDate(schedule.match_date) }} · {{ displayMatchTime(schedule.match_time, schedule.match_end_time) }}</div>
             <div><span class="label">场地：</span>{{ venueText(schedule) }}</div><div><span class="label">有效报名：</span>{{ schedule.signup_count }}人</div>
             <div><span class="label">场序：</span>{{ schedule.field_order || '-' }}</div>
             <div><span class="label">指派状态：</span>{{ schedule.is_assignment_complete ? '已完成' : `未完成（缺 ${pendingAssignmentText}）` }}</div>
@@ -60,18 +60,16 @@
           <div class="card-header">
             <div>
               <h3>裁判配置信息</h3>
-              <div class="card-subtitle">报告开始后锁定比赛信息和场上裁判岗位；裁判监督设置在裁判监督报告开始后锁定。裁判监督可兼任任一场上岗位。</div>
+              <div class="card-subtitle">报告开始后比赛信息保持锁定；裁判人员和岗位配置可随时在“裁判选派”模块调整。</div>
             </div>
             <div class="status-tag" :class="schedule.is_assignment_complete ? 'success' : 'pending'">
               {{ schedule.is_assignment_complete ? '所需岗位已选派' : `仍缺：${pendingAssignmentText}` }}
             </div>
           </div>
           <div class="info-grid">
-            <div><span class="label">裁判员：</span>{{ schedule.main_referee_name || '-' }} <small v-if="schedule.main_source_type">{{ schedule.main_source_type === 'external' ? '（非系统裁判）' : '（系统裁判）' }}</small></div>
-            <div><span class="label">第一助理裁判员：</span>{{ schedule.assistant1_name || '-' }} <small v-if="schedule.assistant1_source_type">{{ schedule.assistant1_source_type === 'external' ? '（非系统裁判）' : '（系统裁判）' }}</small></div>
-            <div><span class="label">第二助理裁判员：</span>{{ schedule.assistant2_name || '-' }} <small v-if="schedule.assistant2_source_type">{{ schedule.assistant2_source_type === 'external' ? '（非系统裁判）' : '（系统裁判）' }}</small></div>
-            <div><span class="label">第四官员：</span>{{ schedule.fourth_required ? schedule.fourth_official_name || '待选派' : '无需第四官员' }} <small v-if="schedule.fourth_source_type">{{ schedule.fourth_source_type === 'external' ? '（非系统裁判）' : '（系统裁判）' }}</small></div>
-            <div><span class="label">裁判监督：</span>{{ schedule.supervisor_required ? schedule.supervisor_name || '待选派' : '无需裁判监督' }} <small v-if="schedule.supervisor_source_type">{{ schedule.supervisor_source_type === 'external' ? '（非系统裁判）' : '（系统裁判）' }}</small></div>
+            <div><span class="label">裁判安排：</span>{{schedule.futsal?'五人制':'普通'}}</div>
+            <div v-for="role in rolesFor(schedule)" :key="role.code"><span class="label">{{role.label}}：</span>{{schedule[role.name]||'待选派'}} <small v-if="schedule[role.code+'_source_type']">{{schedule[role.code+'_source_type']==='external'?'（非系统裁判）':'（系统裁判）'}}</small></div>
+            <div v-if="!schedule.supervisor_required">无需裁判监督</div>
           </div>
         </div>
 
@@ -90,7 +88,7 @@
 
           <div v-if="formError" class="alert error compact-alert">{{ formError }}</div>
           <div v-if="scheduleLocked" class="alert warning compact-alert">
-            报告开始后锁定比赛信息和场上裁判岗位；裁判监督设置在裁判监督报告开始后锁定。裁判监督可兼任任一场上岗位。
+            报告开始后比赛信息保持锁定；裁判人员和岗位配置可随时在“裁判选派”模块调整。
           </div>
 
           <form v-draft="{ value: formData, resetKey: schedule }" class="form" @submit.prevent="handleSave">
@@ -128,9 +126,9 @@
                 <input v-model="formData.match_date" type="date" :disabled="scheduleLocked" required>
               </div>
               <div class="form-group">
-                <label for="formData-match-time">开球时间</label>
-                <input id="formData-match-time" v-model="formData.match_time" type="text" inputmode="text" maxlength="5" placeholder="17:35" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" :required="Boolean(schedule?.match_time)" :disabled="scheduleLocked" aria-describedby="formData-time-help">
-                <small id="formData-time-help" class="cell-meta">中国标准时间 · 24小时制 HH:mm；旧比赛尚未填写时可保留待定</small>
+                <label for="formData-match-time">比赛时间</label>
+                <input id="formData-match-time" v-model="formData.match_time" type="text" inputmode="text" maxlength="11" placeholder="15:00或15:00-16:00" :required="Boolean(schedule?.match_time)" :disabled="scheduleLocked" aria-describedby="formData-time-help">
+                <small id="formData-time-help" class="cell-meta">中国标准时间 · 24小时制，如15:00或15:00-16:00；结束时间仅展示，不支持跨午夜；旧比赛尚未填写时可保留待定</small>
               </div>
               <div class="form-group">
                 <label>场序 *</label>
@@ -138,11 +136,12 @@
               </div>
             </div>
 
+            <label class="supervision-choice"><input type="checkbox" v-model="formData.futsal" :disabled="scheduleLocked"> 五人制裁判安排</label>
             <VenueFields v-model:venue="formData.venue" v-model:detail="formData.venue_detail" :required="Boolean(schedule.venue)" :disabled="scheduleLocked" />
             <p>裁判组请在“裁判选派”模块调整。</p>
 
             <div class="inline-tip">
-              报告开始后锁定比赛信息和场上裁判岗位；裁判监督设置在裁判监督报告开始后锁定。裁判监督可兼任任一场上岗位。
+              报告开始后比赛信息保持锁定；裁判人员和岗位配置可随时在“裁判选派”模块调整。
             </div>
 
             <div class="form-actions">
@@ -173,6 +172,7 @@
 </template>
 
 <script>
+import { formatChangeMessage, rolesFor } from '../utils/officialRoles.js'
 import MatchDiscipline from '../components/MatchDiscipline.vue'
 import CompetitionOptions from '../components/CompetitionOptions.vue'
 import VenueFields from '../components/VenueFields.vue'
@@ -266,8 +266,9 @@ export default {
     this.initPage()
   },
   methods: {
+    rolesFor,
     venueText(value) { return venueText(value) },
-    displayMatchTime(value) { return displayMatchTime(value) },
+    displayMatchTime(value, endTime) { return displayMatchTime(value, endTime) },
     async initPage() {
       this.loading = true
       this.error = ''
@@ -346,11 +347,12 @@ export default {
 
     buildFormFromSchedule(schedule = {}) {
       return {
+        futsal: Boolean(schedule.futsal),
         match_type: schedule.match_type || '',
         team_a_id: schedule.team_a_id ? String(schedule.team_a_id) : '',
         team_b_id: schedule.team_b_id ? String(schedule.team_b_id) : '',
         match_date: schedule.match_date ? String(schedule.match_date).slice(0, 10) : '',
-        match_time: schedule.match_time || '', venue:schedule.venue||'',venue_detail:schedule.venue_detail||'',schedule_revision:schedule.schedule_revision,
+        match_time: schedule.match_time ? displayMatchTime(schedule.match_time, schedule.match_end_time) : '', venue:schedule.venue||'',venue_detail:schedule.venue_detail||'',schedule_revision:schedule.schedule_revision,
         field_order: schedule.field_order || '',
         main_referee_id: schedule.main_referee_id_selection || (schedule.main_referee_id ? String(schedule.main_referee_id) : ''),
         assistant1_id: schedule.assistant1_id_selection || (schedule.assistant1_id ? String(schedule.assistant1_id) : ''),
@@ -466,7 +468,10 @@ export default {
       this.pageSuccess = ''
 
       try {
+        const formatChanged=Boolean(this.formData.futsal)!==Boolean(this.schedule.futsal)
+        if(formatChanged&&!window.confirm(formatChangeMessage))return
         const payload = this.buildUpdatePayload(this.formData)
+        payload.confirm_format_change=formatChanged
         const response = await scheduleAPI.update(this.schedule.id, payload)
         const detail = this.extractScheduleDetailPayload(response?.data ?? response)
         this.schedule = detail

@@ -16,9 +16,13 @@ test('管理员对非系统裁判员获得对应区代填权限，不获得系�
     if(source==='external') assert.equal(buildViewerContext(schedule,{id:7,role:'referee'}).viewer_permissions.can_view,false);
   }
 });
-test('报告开始后先拒绝选派变更，不再查询新候选人资格',async()=>{
-  const db={execute(){throw Error('不应查询新候选人')}};
-  await assert.rejects(prepare(db,1,{main_report_started_at:new Date(),officials:[]},{main_referee_id:'external:99'}),/锁定/);
+test('报告开始或提交后仍可更换人员及岗位配置，继续校验候选人资格',async()=>{
+  const db={execute:async(_sql,[id])=>[[{id,name:'裁判'+id,name_snapshot:'裁判'+id}]]};
+  const existing={id:1,main_report_started_at:new Date(),supervisor_review_status:'submitted',officials:[]};
+  const result=await prepare(db,1,existing,{main_referee_id:'external:99',futsal:true,confirm_format_change:true,supervisor_required:false});
+  assert.equal(result.next[0].external_referee_id,99);assert.equal(result.formatChanged,true);
+  assert.equal(result.fields.supervisor_required,0);assert.equal(result.fields.fourth_required,0);
+  await assert.rejects(prepare({execute:async()=>[[]]},1,existing,{main_referee_id:99}),{code:'REFEREE_NOT_ELIGIBLE_FOR_SEASON'});
 });
 test('系统及非系统裁判员可兼任第四官员且无需同名确认，助理岗位仍互斥',async()=>{
   for(const source of ['system','external']) {

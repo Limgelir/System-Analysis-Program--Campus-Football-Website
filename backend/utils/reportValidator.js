@@ -3,6 +3,7 @@ const { createBusinessError } = require('./scheduleValidator');
 const GOAL_TYPES = new Set(['normal', 'penalty', 'own_goal']);
 const CARD_TYPES = new Set(['yellow', 'red', 'second_yellow_red']);
 const MAX_MATCH_SCORE = 30;
+const FORFEIT_SIDES = new Set(['none', 'home', 'away', 'both']);
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj || {}, key);
@@ -165,6 +166,16 @@ function normalizeGoalEntry(goal, index) {
 }
 
 function normalizeMainReportState(body = {}, existingState = {}) {
+  const forfeitSide = hasOwn(body, 'forfeit_side') ? body.forfeit_side : (existingState.forfeit_side ?? 'none');
+  if (!FORFEIT_SIDES.has(forfeitSide)) {
+    throw createBusinessError('弃权方必须为正常比赛、主队、客队或双方', { code: 'FORFEIT_SIDE_INVALID' });
+  }
+  // 弃权比分必须明确填写，不能把空值默认为 0。
+  if (forfeitSide !== 'none') {
+    for (const [field, label] of [['home_score', '主队弃权判定比分'], ['away_score', '客队弃权判定比分']]) {
+      ensureNonNegativeInteger(hasOwn(body, field) ? body[field] : existingState[field], label, { max: MAX_MATCH_SCORE });
+    }
+  }
   const scores = normalizeScoreFields(body, existingState);
 
   let cards = Array.isArray(existingState.cards) ? existingState.cards.map((card, index) => normalizeCardEntry(card, index)) : [];
@@ -189,10 +200,22 @@ function normalizeMainReportState(body = {}, existingState = {}) {
 
   return {
     ...scores,
+    forfeit_side: forfeitSide,
     cards,
     goals,
     stats: Array.isArray(body.stats) ? body.stats : (Array.isArray(existingState.stats) ? existingState.stats : [])
   };
+}
+
+function validateReportResult(state, teamContext) {
+  if (state.forfeit_side && state.forfeit_side !== 'none') {
+    if (state.goals.length) throw createBusinessError('弃权比赛不能填写进球记录，请先清空进球说明', { code: 'FORFEIT_GOALS_NOT_ALLOWED' });
+    if (state.home_penalty_score !== 0 || state.away_penalty_score !== 0) {
+      throw createBusinessError('弃权比赛不能填写点球大战比分，请先清零', { code: 'FORFEIT_PENALTIES_NOT_ALLOWED' });
+    }
+    return;
+  }
+  validateGoalCountAgainstScore(state.goals, teamContext, state.home_score, state.away_score);
 }
 
 function buildTeamContext(schedule = {}) {
@@ -389,6 +412,7 @@ module.exports = {
   validateGoalTeams,
   validateGoalRecordLimit,
   validateGoalCountAgainstScore,
+  validateReportResult,
   collectSelectedPlayerIds,
   validateSelectedPlayers
 };

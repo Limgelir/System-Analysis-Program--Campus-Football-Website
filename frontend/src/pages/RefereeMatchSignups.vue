@@ -17,8 +17,8 @@
       <h2>{{selectedGroup.match_type}}</h2>
       <RefereeCompetitionTeams v-if="selectedGroup.competition_id" :key="selectedKey" :competition-id="selectedGroup.competition_id" @ready="membershipReady=$event" />
       <article v-for="item in selectedGroup.items" :key="item.id" :data-schedule-id="item.id">
-        <div class="match-head"><h2>{{ item.team_a_name_snapshot }} vs {{ item.team_b_name_snapshot }}</h2><strong>{{ item.match_time||'时间待定' }}</strong></div>
-        <p>{{ item.match_date }} · {{ item.match_type }} · 场序 {{ item.field_order }} · {{ venueText(item) }}</p>
+        <div class="match-head"><h2>{{ item.team_a_name_snapshot }} vs {{ item.team_b_name_snapshot }}</h2><strong>比赛时间：{{ displayMatchTime(item.match_time, item.match_end_time) }}</strong></div>
+        <p>{{ item.match_date }} · {{ item.match_type }} · 场序 {{ item.field_order }} · {{ venueText(item) }} · {{item.futsal?'五人制裁判安排':'普通裁判安排'}}</p>
         <p class="muted">{{ item.season_name }}</p>
         <p><span class="badge">{{ item.signup_status==='active'?'已报名':item.signup_status==='withdrawn'?'已撤回':'未报名' }}</span><span v-if="item.assigned_role" class="badge">已选派：{{ roleText(item.assigned_role) }}</span></p>
         <p v-if="item.venue_changed" class="notice">比赛场地已变化，请核对当前场地后保存意向确认。</p>
@@ -26,7 +26,7 @@
         <p v-if="item.signup_status==='active'">当前意向：{{ intentionText(item.intentions) }}</p>
         <p v-if="item.reason || closed(item)" class="notice">{{ closed(item)?'已开球，报名、修改和撤回已关闭':item.reason }}</p>
         <fieldset :disabled="loading||busy!==null || closed(item) || !(item.can_apply||item.can_change)"><legend>意向位置（可多选）</legend>
-          <label v-for="intent in intentions.filter(i => (i.value !== 'supervisor' || item.supervisor_required !== 0) && (i.value !== 'fourth' || item.fourth_required !== 0))" :key="intent.value"><input v-model="drafts[item.id]" type="checkbox" :value="intent.value">{{ intent.label }}</label>
+          <label v-for="intent in intentionsFor(item)" :key="intent.value"><input v-model="drafts[item.id]" type="checkbox" :value="intent.value">{{ intent.label }}</label>
         </fieldset>
         <div class="actions"><button class="primary" :disabled="loading||busy!==null||closed(item)||!(item.can_apply||item.can_change)||!drafts[item.id]?.length||!membershipReady" @click="save(item,'save')">{{ busy===item.id?'提交中…':item.signup_status==='active'?'保存意向':item.signup_status==='withdrawn'?'重新报名':'提交报名' }}</button><button v-if="item.signup_status==='active'" :disabled="loading||busy!==null||closed(item)||!item.can_change" @click="save(item,'withdraw')">撤回报名</button></div>
       </article>
@@ -37,10 +37,11 @@
 </template>
 <script setup>
 import {ref,computed,onMounted,onBeforeUnmount} from 'vue'
+import {displayMatchTime} from '../utils/matchTime.js'
 import {confirmDraftLeave} from '../../../shared-ui/interaction.js'
 import RefereeCompetitionTeams from '../components/RefereeCompetitionTeams.vue'
 import {matchSignupAPI} from '../api/index.js'
-import {intentions,intentionText,roleText,venueText} from '../utils/matchSignup.js'
+import {intentionsFor,intentionText,roleText,venueText} from '../utils/matchSignup.js'
 const view=ref('week'),page=ref(1),items=ref([]),drafts=ref({}),loading=ref(false),busy=ref(null),error=ref(''),message=ref(''),currentSeason=ref(null),windowRange=ref(null),pagination=ref({}),tick=ref(Date.now())
 const selectedKey=ref(''),membershipReady=ref(false)
 const groups=computed(()=>{const map=new Map();for(const item of items.value){const key=item.season_id+':'+item.match_type;if(!map.has(key))map.set(key,{key,match_type:item.match_type,season_name:item.season_name,competition_id:item.competition_id,items:[]});map.get(key).items.push(item)}return [...map.values()]})
@@ -65,7 +66,7 @@ async function save(item,action){
   if(loading.value||busy.value!==null)return
   if(action==='withdraw'&&!window.confirm('确认撤回本场报名？已选派的岗位不会自动取消。'))return
   busy.value=item.id;error.value='';message.value=''
-  try{const {data}=await matchSignupAPI.save(item.id,{action,intentions:(drafts.value[item.id]||[]).filter(i=>(i!=='supervisor'||item.supervisor_required!==0)&&(i!=='fourth'||item.fourth_required!==0)),revision:item.signup_revision,schedule_revision:item.schedule_revision});items.value=items.value.map(r=>r.id===item.id?data:r);drafts.value[item.id]=[...data.intentions];message.value=action==='withdraw'?'报名已撤回；正式选派保持不变':'意向已保存；正式选派以“我的执法”为准'}
+  try{const {data}=await matchSignupAPI.save(item.id,{action,intentions:(drafts.value[item.id]||[]).filter(i=>intentionsFor(item).some(option=>option.value===i)),revision:item.signup_revision,schedule_revision:item.schedule_revision});items.value=items.value.map(r=>r.id===item.id?data:r);drafts.value[item.id]=[...data.intentions];message.value=action==='withdraw'?'报名已撤回；正式选派保持不变':'意向已保存；正式选派以“我的执法”为准'}
   catch(e){error.value=e?.response?.data?.message||'保存失败，请重试';if(e?.response?.status===409)await load(true)}finally{busy.value=null}
 }
 onMounted(()=>{load();timer=setInterval(()=>tick.value=Date.now(),1000)})

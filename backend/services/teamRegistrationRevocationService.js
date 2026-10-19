@@ -17,6 +17,7 @@ async function revoke(id, user, body, revision) {
     const rows = await service.members(c, a.id, true), context = await service.reviewContext(c, a, rows);
     if (body.review_token !== context.token) throw rules.businessError('球队资料、名单、角色或审核信息已变化，请刷新核对再撤销', 409, 'TEAM_REVIEW_CHANGED');
     const before = await service.snapshot(c, a);
+    const undo = await require('./teamOperationUndoService').capture(c, a, 'revoked');
     const batch = await require('./playerRosterService').effectiveBatch(team.id, undefined, c);
     const [current] = await w.sql(c, `SELECT p.*,a.student_id,a.name,a.college,a.gender FROM team_player p
       LEFT JOIN player_accounts a ON a.id=p.player_account_id WHERE p.roster_batch_id=? ORDER BY p.id`, [batch?.id || 0]);
@@ -40,6 +41,7 @@ async function revoke(id, user, body, revision) {
       team.team_name,team.shirt_color,team.shorts_color,team.socks_color,user.id,w.chinaSql(),a.id]);
     const after = await service.application(c, a.id);
     await service.event(c, after, 'revoked', user, before, reason);
+    await require('./teamOperationUndoService').store(c, a.id, undo);
     await service.notify(c, [team.manager_player_id,team.captain_player_id,...current.map(m=>m.player_account_id)],
       `application:${a.id}:${after.revision}`, 'team_revoked',
       `“${team.team_name}”${a.league_type}报名通过已撤销：${reason}。负责人或队长可在报名时间内修改原申请并重新提交。`, a.season_id, team.id);

@@ -11,14 +11,16 @@
       <section v-for="(group,index) in data.groups" :key="group.match_type" :id="'competition-'+index" class="competition">
         <h2>{{group.match_type}}</h2>
         <section v-for="day in group.days" :key="day.match_date" class="match-day">
-          <div class="day-head"><h3>比赛日 · {{day.match_date}}</h3><span>{{day.matches.length}} 场比赛 · {{day.registrants.length}} 人已报名</span></div>
+          <div class="day-head"><h3>比赛日 · {{day.match_date}}</h3><span>{{day.matches.length}} 场比赛 · {{day.registrants.length}} 人已报名</span><button class="day-export" :disabled="!!exporting" @click="exportDay(group,day)">{{exporting===dayKey(group,day)?'导出中…':'导出本比赛日 CSV'}}</button></div>
+          <p class="hint">导出当前赛事当天全部比赛，以已保存的选派为准，包含已开球及时间待定的场次。</p>
+          <p v-if="exportErrors[dayKey(group,day)]" class="export-error" role="alert">{{exportErrors[dayKey(group,day)]}}</p>
           <section class="registrants"><h4>本比赛日已报名裁判员</h4><p v-if="!day.registrants.length" class="hint">暂无裁判员报名，仍可在下方直接选派。</p>
             <article v-for="referee in day.registrants" :key="referee.id" class="registrant"><div class="ref-head"><strong>{{referee.name}}</strong><small>{{referee.student_id}}</small><span class="badge" :class="{invalid:!referee.eligible}">{{referee.eligible?'已报名':'已报名 · 当前资格失效'}}</span></div>
               <p>已报名该日：<a v-for="match in referee.matches" :key="match.id" :href="'#match-'+match.id">场序 {{match.field_order}}（{{match.team_a}} VS {{match.team_b}}）<small>报名职位：{{intentionText(match.intentions)}}{{match.changed?' · 时间或场地变更待核对':''}}</small></a></p>
               <p>报名职位：<strong>{{intentionText(referee.intentions)}}</strong></p><p class="teams">该赛事已加入队伍：{{referee.membership_confirmed?(referee.teams.map(t=>t.team_name).join('、')||'未参加队伍'):'尚未填写'}}</p>
             </article>
           </section>
-          <h4 class="assignment-title">本比赛日比赛选派</h4><MatchAssignmentEditor v-for="match in day.matches" :key="match.id" :schedule="match" @updated="updateMatch"/>
+          <h4 class="assignment-title">本比赛日比赛选派</h4><MatchAssignmentEditor v-for="match in day.matches" :key="match.id" :schedule="match" :warning-revision="warningRevision" @updated="updateMatch"/>
         </section>
       </section>
     </template>
@@ -30,16 +32,30 @@ import {useRoute} from 'vue-router'
 import {matchSignupAPI} from '../api/index.js'
 import {intentionText} from '../utils/matchSignup.js'
 import {confirmDraftLeave} from '../../../shared-ui/interaction.js'
+import {downloadBlob,exportError} from '../utils/download.js'
 import MatchAssignmentEditor from '../components/MatchAssignmentEditor.vue'
+const warningRevision=ref(0)
 const route=useRoute(),view=ref(route.query.view==='all'?'all':'week'),seasonId=ref(route.query.season_id||''),data=ref(null),loading=ref(false),error=ref('');let sequence=0
 const matchCount=computed(()=>data.value?.groups.reduce((n,g)=>n+g.days.reduce((v,d)=>v+d.matches.length,0),0)||0)
+const exporting=ref(''),exportErrors=ref({})
+const dayKey=(group,day)=>JSON.stringify([group.match_type,day.match_date])
+async function exportDay(group,day){
+  if(exporting.value)return
+  const key=dayKey(group,day),season=data.value.selected_season
+  const filename=`裁判选派-${season.season_name||season.id}-${group.match_type}-${day.match_date}.csv`.replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_')
+  exporting.value=key;delete exportErrors.value[key]
+  try{downloadBlob(await matchSignupAPI.exportDay({season_id:season.id,match_type:group.match_type,match_date:day.match_date}),filename)}
+  catch(e){exportErrors.value[key]=await exportError(e)}
+  finally{exporting.value=''}
+}
 async function load(){const id=++sequence;loading.value=true;error.value='';try{const r=await matchSignupAPI.board({view:view.value,...(view.value==='all'&&seasonId.value?{season_id:seasonId.value}:{})});if(id!==sequence)return;data.value=r.data;seasonId.value=r.data.selected_season?.id||''}catch(e){if(id===sequence)error.value=e.response?.data?.message||'读取失败，请重试'}finally{if(id===sequence){loading.value=false;await nextTick();if(route.query.match)document.getElementById('match-'+route.query.match)?.scrollIntoView()}}}
 function reload(){if(confirmDraftLeave())load()}
 function switchView(value){if(!confirmDraftLeave())return;view.value=value;load()}
 function changeSeason(event){if(!confirmDraftLeave()){event.target.value=seasonId.value;return}seasonId.value=event.target.value;load()}
-function updateMatch(match){for(const group of data.value.groups)for(const day of group.days){const index=day.matches.findIndex(m=>m.id===match.id);if(index>=0){day.matches.splice(index,1,match);return}}}
+function updateMatch(match){warningRevision.value++;for(const group of data.value.groups)for(const day of group.days){const index=day.matches.findIndex(m=>m.id===match.id);if(index>=0){day.matches.splice(index,1,match);return}}}
 onMounted(load);onBeforeUnmount(()=>sequence++)
 </script>
 <style scoped>
+.day-export{width:auto;min-height:44px;margin:0;border:1px solid #becddd;border-radius:8px;padding:10px 14px;color:#123b6d;background:white;cursor:pointer}.day-export:disabled{opacity:.6;cursor:wait}.export-error{color:#a02b2b;line-height:1.6}
 .board{max-width:1280px;margin:0 auto;padding:24px;color:#172b45}.page-head{display:flex;justify-content:space-between;align-items:center;gap:20px}.page-head h1{margin:0;font-size:28px}.page-head p{color:#52657a}.eyebrow{font-size:12px;letter-spacing:2px}.board a{color:#1e5ca8}.toolbar{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0}.toolbar button,.toolbar select{min-height:44px;width:auto;margin:0;border:1px solid #becddd;border-radius:8px;padding:10px 14px;color:#123b6d;background:white;cursor:pointer}.toolbar button[aria-pressed=true]{background:#1e5ca8;color:white}.toolbar button:disabled{opacity:.6}.hint,.totals{font-size:14px;color:#52657a;line-height:1.7}.type-tabs{display:flex;flex-wrap:wrap;gap:12px;margin:22px 0}.type-tabs a{background:white;border:1px solid #c7d8e9;border-radius:8px;padding:12px 18px;text-decoration:none}.type-tabs span{margin-left:12px;font-size:12px;color:#52657a}.competition{margin-top:32px;scroll-margin-top:20px}.competition h2{font-size:24px;padding-bottom:12px;border-bottom:3px solid #1e5ca8}.match-day{margin:24px 0 40px}.day-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.day-head h3{font-size:20px}.day-head span{font-size:14px;color:#52657a}.registrants{background:#eaf1fa;border:1px solid #c7d8e9;border-radius:12px;padding:20px}.registrants h4{font-size:17px;margin:0 0 16px}.registrant{padding:16px;background:white;border-radius:8px;margin-top:12px;border-left:4px solid #3f78ad}.ref-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.ref-head strong{font-size:18px}.ref-head small{color:#52657a}.badge{font-size:12px;padding:4px 8px;color:#156147;background:#e3f4ec;border-radius:6px}.badge.invalid{background:#fff0d6;color:#805410}.registrant p{margin:10px 0 0;line-height:1.8;overflow-wrap:anywhere}.registrant a{display:inline-block;vertical-align:top;margin:0 16px 6px 0;text-decoration:none}.registrant a small{display:block;color:#52657a}.teams{color:#344f6e}.assignment-title{font-size:17px;margin-top:26px}@media(max-width:600px){.board{padding:16px 10px}.page-head h1{font-size:24px}.registrants{padding:12px}.registrant{padding:12px}.registrant a{display:block}.page-head{align-items:flex-start}.toolbar button{flex:1}}
 </style>

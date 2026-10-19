@@ -83,6 +83,15 @@ async function requireCurrentSeason(req, res, next) {
 }
 
 const imports=require('../services/teamImportService');
+router.get('/:id/current-roster/export', requireAdmin, async (req, res) => {
+  try {
+    const { team, roster_batch, players } = await teamService.getCurrentRoster(req.params.id);
+    const tags = require('../utils/teamTags').TAGS.filter(tag => players.some(p => Object.hasOwn(p, tag.flag)));
+    require('../utils/listQuery').sendCsv(res,
+      ['赛季', '比赛类型', '队伍', '名单版本', '号码', '姓名', '学院', '队长', '守门员', ...tags.map(t => t.label), '备注'],
+      players.map(p => [team.season_name, team.league_type, team.team_name, roster_batch?.version_no, p.jersey_number, p.player_name, p.college, p.is_captain ? '是' : '否', p.is_goalkeeper ? '是' : '否', ...tags.map(t => p[t.flag] ? '是' : '否'), p.remark]));
+  } catch (e) { const status = e.statusCode || 400; res.status(status).json({ code: status, message: publicErrorMessage(e, '名单导出失败', status) }); }
+});
 const wrap=work=>async(req,res)=>{try{res.json({code:200,data:await work(req)});}catch(e){const status=e.statusCode||500;res.status(status).json({code:status,message:publicErrorMessage(e,'名单导入失败',status)});}};
 router.get('/import-template',requireAdmin,async(req,res)=>{
   try {

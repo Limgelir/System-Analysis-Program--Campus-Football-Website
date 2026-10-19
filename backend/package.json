@@ -4,6 +4,19 @@
   "description": "校园足球裁判执裁管理系统后端",
   "main": "server.js",
   "scripts": {
+    "preview:assignment-export": "node scripts/previewAssignmentExport.js",
+    "test:assignment-export": "node scripts/runApiIntegrationTests.js --assignment-export",
+    "test:e2e:assignment-export": "node scripts/runE2ETests.js --assignment-export",
+    "preview:fourth-sheet": "node scripts/previewFourthOfficialSheet.js",
+    "test:fourth-sheet": "node scripts/runApiIntegrationTests.js --fourth-sheet",
+    "test:e2e:fourth-sheet": "node scripts/runE2ETests.js --fourth-sheet",
+    "preview:schedule-time": "node scripts/previewScheduleImports.js --match-time",
+    "preview:admin-teams": "node scripts/previewAdminTeamManagement.js",
+    "test:admin-teams": "node scripts/runApiIntegrationTests.js --team-auto-review",
+    "test:e2e:admin-teams": "node scripts/runE2ETests.js --admin-teams",
+    "preview:schedule-imports": "node scripts/previewScheduleImports.js",
+    "test:schedule-imports": "node scripts/runApiIntegrationTests.js --schedule-imports",
+    "test:e2e:schedule-imports": "node scripts/runE2ETests.js --schedule-imports",
     "preview:college-reviews": "node scripts/previewCompetitions.js --college-reviews",
     "test:migration:colleges": "node scripts/verifyCollegeMigration.js",
     "colleges:plan": "node scripts/planCollegeMigration.js",
@@ -49,7 +62,14 @@
     "test:team-auto-review": "node scripts/runApiIntegrationTests.js --team-auto-review",
     "preview:team-auto-review": "node scripts/previewCompetitions.js --team-auto-review",
     "test:migration:team-auto-review": "node scripts/verifyTeamAutoReviewMigration.js",
-    "preview:assignment-board": "node scripts/previewCompetitions.js --assignment-board"
+    "preview:assignment-board": "node scripts/previewCompetitions.js --assignment-board",
+    "preview:futsal": "node scripts/previewCompetitions.js --futsal",
+    "test:futsal": "node scripts/runApiIntegrationTests.js --futsal",
+    "test:e2e:futsal": "node scripts/runE2ETests.js --futsal",
+    "test:migration:futsal": "node scripts/verifyFutsalMigration.js",
+    "preview:assignment-changes": "node scripts/previewAssignmentChanges.js",
+    "test:assignment-changes": "node scripts/runApiIntegrationTests.js --assignment-changes",
+    "test:e2e:assignment-changes": "node scripts/runE2ETests.js --assignment-changes"
   },
   "keywords": [
     "referee",
@@ -64,6 +84,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "docx": "9.6.1",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "express-rate-limit": "^8.7.0",

@@ -141,7 +141,7 @@
           <div v-for="match in refereeMatches" :key="match.id" class="match-item">
             <div class="match-header">
               <div class="match-title">{{ match.display_teams }}</div>
-              <div class="match-date">{{ String(match.match_date || '').slice(0, 10) || '-' }} · {{ match.match_time ?? '时间待定' }}</div>
+              <div class="match-date">{{ String(match.match_date || '').slice(0, 10) || '-' }} · {{ match.match_time ? match.match_time + (match.match_end_time ? '-' + match.match_end_time : '') : '时间待定' }}</div>
             </div>
             <div class="match-details">
               <div class="detail-row">
@@ -447,7 +447,8 @@ export default {
         assistant1: '第一助理裁判员',
         assistant2: '第二助理裁判员',
         fourth: '第四官员',
-        supervisor: '裁判监督'
+        second: '第二裁判员', timekeeper: '计时员', second_referee_id:'第二裁判员',timekeeper_id:'计时员',
+  supervisor: '裁判监督'
       }
       return roleMap[roleCode] || roleCode
     },

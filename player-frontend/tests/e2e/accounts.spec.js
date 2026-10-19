@@ -46,7 +46,12 @@ test('原管理员端查询、重置密码、强制改密、启停和学号纠�
 })
 test('两个页面并发改资料时提示冲突，不覆盖已保存的版本', async () => {
   await player.goto('/account'); const second = await contexts[0].newPage(); await second.goto('/account')
+  await expect(second.getByLabel('姓名', { exact: true })).toHaveValue('修改后的球员')
   await player.getByLabel('姓名', { exact: true }).fill('并发后的姓名'); await player.getByRole('button', { name: '保存资料' }).click(); await expect(player.getByRole('status')).toContainText('已保存')
+  // 学院组件会刷新共享账号信息；姓名表单仍须提交自己加载时的版本。
+  await second.getByRole('button', { name: '刷新申请状态', exact: true }).click()
+  await expect(second.getByRole('button', { name: '刷新申请状态', exact: true })).toBeEnabled()
+  await expect(second.getByLabel('姓名', { exact: true })).toHaveValue('修改后的球员')
   await second.getByLabel('姓名', { exact: true }).fill('旧页面覆盖'); await second.getByRole('button', { name: '保存资料' }).click(); await expect(second.getByRole('alert')).toContainText('账号资料已变化'); second.once('dialog', d => d.dismiss()); await second.getByRole('button', { name: '刷新最新资料' }).click(); await expect(second.getByLabel('姓名', { exact: true })).toHaveValue('旧页面覆盖'); second.once('dialog', d => d.accept()); await second.getByRole('button', { name: '刷新最新资料' }).click(); await expect(second.getByLabel('姓名', { exact: true })).toHaveValue('并发后的姓名'); await second.close()
 })
 test('手机注册登录与账号设置无横向溢出，错误提示清晰', async ({ browser }) => {

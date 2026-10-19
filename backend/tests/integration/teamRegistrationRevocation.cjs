@@ -23,7 +23,7 @@ module.exports = async ({ t, pool, call, players, settings, create, member, subm
       await c.query('ALTER TABLE team DROP COLUMN registration_revoked');
       await c.query('ALTER TABLE team_applications DROP COLUMN revoke_reason');
       await c.query("ALTER TABLE team_applications MODIFY status ENUM('draft','pending','returned','withdrawn','approved','auto_failed') NOT NULL DEFAULT 'draft'");
-      await c.query("DELETE FROM schema_migrations WHERE version='0031'");
+      await c.query("DELETE FROM schema_migrations WHERE version>='0031'");
       await require('../../utils/migrationRunner').runPendingMigrations(c);
       for(const table of tables)assert.deepEqual((await c.query('SELECT * FROM '+table+' ORDER BY id'))[0],before[table],table);
     } finally { c.release(); }

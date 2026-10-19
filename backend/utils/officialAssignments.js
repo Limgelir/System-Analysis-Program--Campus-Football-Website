@@ -4,6 +4,8 @@ const ROLES = Object.freeze([
   { code: 'assistant1', field: 'assistant1_id', name: 'assistant1_name', label: '第一助理裁判员' },
   { code: 'assistant2', field: 'assistant2_id', name: 'assistant2_name', label: '第二助理裁判员' },
   { code: 'fourth', field: 'fourth_official_id', name: 'fourth_official_name', label: '第四官员' },
+  { code: 'second', field: 'second_referee_id', name: 'second_referee_name', label: '第二裁判员' },
+  { code: 'timekeeper', field: 'timekeeper_id', name: 'timekeeper_name', label: '计时员' },
   { code: 'supervisor', field: 'supervisor_id', name: 'supervisor_name', label: '裁判监督' }
 ]);
 // 显式 source:id 与旧正整数 ID 均支持，外部 ID 不可能被解析成登录账号 ID。
@@ -41,27 +43,25 @@ async function prepare(c, seasonId, existing, data, { full = false } = {}) {
   const supervision=require('./supervisionRules');
   const supervisorRequired=supervision.normalize(data.supervisor_required,existing.supervisor_required);
   const requirements=require('./officialRequirements');
-  const fourthRequired=requirements.normalizeFourth(data.fourth_required,existing.fourth_required);
-  if(fourthRequired!==requirements.required(existing.fourth_required)&&supervision.fieldLocked(existing))
-    throw createBusinessError('报告已开始，不能更改第四官员需求或选派',{code:'SCHEDULE_ASSIGNMENT_LOCKED'});
-  if(supervisorRequired!==supervision.required(existing.supervisor_required)&&supervision.supervisorLocked(existing))
-    throw createBusinessError('裁判监督报告已开始，不能更改裁判监督需求或选派',{code:'SCHEDULE_ASSIGNMENT_LOCKED'});
+  const futsal=requirements.normalizeFutsal(data.futsal,existing.futsal);
+  const formatChanged=Boolean(existing.id)&&futsal!==requirements.isFutsal(existing);
+  if(formatChanged&&data.confirm_format_change!==true)throw createBusinessError('切换安排类型将清空不适用的选派和报名意向，意向全部失效者自动撤回，请确认后保存',{statusCode:409,code:'FORMAT_CHANGE_CONFIRMATION_REQUIRED'});
+  const requestedFourth=requirements.normalizeFourth(data.fourth_required,existing.fourth_required);
+  const fourthRequired=futsal?false:requestedFourth;
   const next = [], previous = existing.officials || [];
-  const fields = {supervisor_required:supervisorRequired?1:0,fourth_required:fourthRequired?1:0}, snapshots = {}, changedRoles=[];
-  let changed = supervisorRequired!==supervision.required(existing.supervisor_required)||fourthRequired!==requirements.required(existing.fourth_required);
+  const fields = {futsal:futsal?1:0,supervisor_required:supervisorRequired?1:0,fourth_required:fourthRequired?1:0}, snapshots = {}, changedRoles=[];
+  let changed = formatChanged || supervisorRequired!==supervision.required(existing.supervisor_required)||fourthRequired!==requirements.required(existing.fourth_required);
   for (const role of ROLES) {
     const provided = Object.hasOwn(data, role.field);
     if(role.code==='supervisor'&&!supervisorRequired&&provided&&data[role.field])throw createBusinessError('不需要裁判监督的比赛不能同时选派裁判监督');
-    if(role.code==='fourth'&&!fourthRequired&&provided&&data[role.field])throw createBusinessError('不需要第四官员的比赛不能同时选派第四官员');
+    if(!formatChanged&&!requirements.roleRequired(fields,role.code)&&provided&&data[role.field]&&role.code!=='supervisor')throw createBusinessError('本场不需要'+role.label+'，不能选派该岗位');
+    if(!formatChanged&&role.code==='fourth'&&!fourthRequired&&provided&&data[role.field])throw createBusinessError('不需要第四官员的比赛不能同时选派第四官员');
     const selected = !requirements.roleRequired(fields,role.code)?null:parseSelection(provided ? data[role.field] : (full ? null : selectionFor(existing, role)), role.code);
     const prior = previous.find(item => item.role === role.code);
     const same = (selected?.key || null) === selectionFor(existing, role);
     if (!same) {
       changed = true;
       changedRoles.push(role.code);
-      if (role.code==='supervisor'?supervision.supervisorLocked(existing):supervision.fieldLocked(existing)) {
-        throw createBusinessError(role.code==='supervisor'?'裁判监督报告已开始，裁判监督选派已锁定':'报告已开始，场上裁判岗位已锁定', { code: 'SCHEDULE_ASSIGNMENT_LOCKED' });
-      }
     }
     let person = null;
     if (selected && same && prior) person = { ...prior };
@@ -96,15 +96,20 @@ async function prepare(c, seasonId, existing, data, { full = false } = {}) {
   if (changed && duplicateName && data.confirm_distinct_people !== true) {
     throw createBusinessError('选派中存在同名记录，请核对来源及编号，确认是不同人后再保存', { statusCode: 409, code: 'OFFICIAL_SAME_NAME_CONFIRMATION_REQUIRED' });
   }
-  return { next, fields, snapshots, changed, changedRoles };
+  return { next, fields, snapshots, changed, changedRoles, formatChanged, existing };
 }
-async function persist(c, scheduleId, prepared) {
+async function persist(c, scheduleId, prepared, viewer) {
+  const handover = await require('../services/assignmentReportHandover').begin(c,scheduleId,prepared,viewer);
+  const values={...prepared.fields,...prepared.snapshots};
+  await c.execute('UPDATE match_schedules SET '+Object.keys(values).map(k=>k+'=?').join(',')+' WHERE id=?',[...Object.values(values),scheduleId]);
+  if(prepared.formatChanged)await require('../services/matchSignupService').reconcileFormat(c,scheduleId,prepared.existing,prepared.fields);
   if (!prepared.changed) return;
-  // 只替换真正变化的岗位，补裁判监督时保留被裁判员报告引用的场上岗位ID。
+  // 只替换变化的岗位；原个人数据和操作人身份已保存到历史快照。
   for(const role of prepared.changedRoles)await c.execute('DELETE FROM match_official_assignments WHERE schedule_id=? AND role=?',[scheduleId,role]);
   for (const a of prepared.next.filter(a=>prepared.changedRoles.includes(a.role))) {
     await c.execute(`INSERT INTO match_official_assignments (schedule_id,role,source_type,referee_id,external_referee_id,name_snapshot)
       VALUES (?,?,?,?,?,?)`, [scheduleId,a.role,a.source_type,a.referee_id,a.external_referee_id,a.name_snapshot]);
   }
+  await require('../services/assignmentReportHandover').finish(c,handover);
 }
 module.exports = { ROLES, parseSelection, selectionFor, hydrate, prepare, persist };

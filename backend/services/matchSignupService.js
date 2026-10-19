@@ -7,7 +7,7 @@ async function clock(c) {
   const [[r]]=await c.query("SELECT DATE_FORMAT(UTC_TIMESTAMP()+INTERVAL 8 HOUR,'%Y-%m-%d %H:%i:%s') AS now");
   return r.now;
 }
-const select = `SELECT s.id,s.season_id,se.season_name,co.id competition_id,s.match_type,s.field_order,s.supervisor_required,s.fourth_required,s.match_date,TIME_FORMAT(s.match_time,'%H:%i') match_time,
+const select = `SELECT s.id,s.season_id,se.season_name,co.id competition_id,s.match_type,s.field_order,s.supervisor_required,s.fourth_required,s.futsal,s.match_date,TIME_FORMAT(s.match_time,'%H:%i') match_time,TIME_FORMAT(s.match_end_time,'%H:%i') match_end_time,
   s.team_a_name_snapshot,s.team_b_name_snapshot,s.venue,s.venue_detail,s.schedule_revision,se.is_active,ps.ended_at,
   r.is_active referee_active,rs.status registration_status,ms.id signup_id,ms.status signup_status,ms.intentions,ms.revision signup_revision,
   ms.venue_snapshot,ms.venue_detail_snapshot,ms.match_date_snapshot,TIME_FORMAT(ms.match_time_snapshot,'%H:%i') match_time_snapshot,
@@ -53,6 +53,7 @@ async function mutate(refereeId,scheduleId,data) {
     // 与赛程改期、正式选派、删除共用同一行锁，锁后再读取业务时钟与资格。
     const [[schedule]]=await c.execute('SELECT * FROM match_schedules WHERE id=? FOR UPDATE',[scheduleId]);
     if (!schedule) throw createBusinessError('比赛不存在',{statusCode:404});
+    if (intentions?.some(i=>!require('../utils/officialRequirements').signupIntentions(schedule).includes(i))) throw createBusinessError('所选意向不适用于本场裁判安排，请重新选择岗位');
     if (intentions?.includes('fourth') && !schedule.fourth_required) throw createBusinessError('本场无需第四官员，请选择其他岗位意向');
     if (intentions?.includes('supervisor') && !schedule.supervisor_required) throw createBusinessError('本场无需裁判监督，请选择场上岗位意向');
     await c.execute('SELECT id FROM seasons WHERE id=? FOR SHARE',[schedule.season_id]);
@@ -96,3 +97,17 @@ async function history(scheduleId,signupId) {
   return items.map(r=>({...r,before_snapshot:json(r.before_snapshot),after_snapshot:json(r.after_snapshot)}));
 }
 module.exports={list,mutate,adminList,history,validCount};
+
+// 调用方持有赛程行锁；报名与安排类型在同一事务中更新，历史追加保存。
+module.exports.reconcileFormat=async function(c,scheduleId,beforeSchedule,afterSchedule){
+  const allowed=require('../utils/officialRequirements').signupIntentions(afterSchedule);
+  const [rows]=await c.execute("SELECT * FROM referee_match_signups WHERE schedule_id=? AND status='active' FOR UPDATE",[scheduleId]);
+  for(const row of rows){
+    const old=json(row.intentions),intentions=old.filter(i=>allowed.includes(i));
+    if(intentions.length===old.length)continue;
+    const snapshot={status:row.status,intentions:old,revision:row.revision,match_date_snapshot:row.match_date_snapshot,match_time_snapshot:readMatchTime(row.match_time_snapshot),venue_snapshot:row.venue_snapshot,venue_detail_snapshot:row.venue_detail_snapshot,futsal:Boolean(beforeSchedule.futsal)};
+    const next={...snapshot,status:intentions.length?'active':'withdrawn',intentions,revision:Number(row.revision)+1,futsal:Boolean(afterSchedule.futsal),reason:'管理员切换裁判安排类型，清理不适用岗位意向'};
+    await c.execute('UPDATE referee_match_signups SET status=?,intentions=?,revision=?,updated_at=UTC_TIMESTAMP(3) WHERE id=?',[next.status,JSON.stringify(intentions),next.revision,row.id]);
+    await c.execute("INSERT INTO referee_match_signup_events (signup_id,revision,operation,before_snapshot,after_snapshot,created_at) VALUES (?,?,'format_change',?,?,UTC_TIMESTAMP(3))",[row.id,next.revision,JSON.stringify(snapshot),JSON.stringify(next)]);
+  }
+};

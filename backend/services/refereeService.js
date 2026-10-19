@@ -315,8 +315,8 @@ class RefereeService {
       const [matchCount] = await connection.execute(
         `SELECT COUNT(*) as count
          FROM match_schedules m
-         WHERE m.main_referee_id = ? OR m.assistant1_id = ? OR m.assistant2_id = ? OR m.fourth_official_id = ? OR m.supervisor_id = ?`,
-        [id, id, id, id, id]
+         WHERE EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=m.id AND a.referee_id=? AND a.source_type='system')`,
+        [id]
       );
 
       const systemCount = matchCount[0]?.count || 0;
@@ -326,7 +326,7 @@ class RefereeService {
 
       // 查询该裁判的所有执法比赛
       const [matches] = await connection.execute(
-        `SELECT m.id, m.match_type, m.match_date, TIME_FORMAT(m.match_time,'%H:%i') AS match_time, m.field_order,
+        `SELECT m.id, m.match_type, m.match_date, TIME_FORMAT(m.match_time,'%H:%i') AS match_time,TIME_FORMAT(m.match_end_time,'%H:%i') AS match_end_time, m.field_order,
                 m.team_a_name_snapshot, m.team_b_name_snapshot, m.supervisor_required,
                 (SELECT GROUP_CONCAT(oa.role ORDER BY oa.id) FROM match_official_assignments oa WHERE oa.schedule_id=m.id AND oa.source_type='system' AND oa.referee_id=?) AS my_roles,
                 CASE
@@ -339,9 +339,9 @@ class RefereeService {
                 mr.main_report_status, mr.supervisor_review_status
          FROM match_schedules m
          LEFT JOIN match_reports mr ON mr.schedule_id = m.id
-         WHERE m.main_referee_id = ? OR m.assistant1_id = ? OR m.assistant2_id = ? OR m.fourth_official_id = ? OR m.supervisor_id = ?
+         WHERE EXISTS (SELECT 1 FROM match_official_assignments a WHERE a.schedule_id=m.id AND a.referee_id=? AND a.source_type='system')
          ORDER BY m.match_date DESC, (m.match_time IS NULL) ASC, m.match_time ASC, m.field_order_sort ASC, m.field_order ASC, m.id ASC`,
-        [id, id, id, id, id, id, id, id, id, id, id]
+        [id, id, id, id, id, id, id]
       );
 
       user.matches = matches.map(match => ({
@@ -349,9 +349,10 @@ class RefereeService {
         match_type: match.match_type,
         match_date: match.match_date,
         match_time: match.match_time,
+        match_end_time: match.match_end_time,
         field_order: match.field_order,
         display_teams: `${match.team_a_name_snapshot} vs ${match.team_b_name_snapshot}`,
-        my_role_code: match.my_role_code,
+        my_role_code: match.my_role_code || (match.my_roles||'').split(',')[0],
         my_role_codes: (match.my_roles || '').split(',').filter(Boolean),
         supervisor_required: Boolean(match.supervisor_required),
         report_main_status: match.main_report_status,

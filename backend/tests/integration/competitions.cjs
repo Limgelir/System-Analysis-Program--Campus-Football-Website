@@ -65,9 +65,9 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
   });
   await t.test('任意赛事支持字符串场序、精确唯一、自然排序及并发防重',async()=>{
     for(const value of ['A1','a1','01','1','A10','A2','决赛'])assert.equal((await match(value,20)).field_order,value);
-    const result=await request('/api/schedule',{token:admin,body:{match_type:comp.league_type,team_a_id:home.id,team_b_id:away.id,match_date:day(20),match_time:'00:00',field_order:' A1 '}});expectStatus(result,400,'去空白后重复场序');assert.equal(result.data.code,'FIELD_ORDER_CONFLICT');
+    const result=await request('/api/schedule',{token:admin,body:{match_type:comp.league_type,team_a_id:home.id,team_b_id:away.id,match_date:day(20),match_time:'00:00',field_order:' A1 '}});expectStatus(result,409,'去空白后重复场序须确认替换');assert.equal(result.data.code,'SCHEDULE_REPLACEMENT_CONFIRM_REQUIRED');
     const body={match_type:comp.league_type,team_a_id:home.id,team_b_id:away.id,match_date:day(20),match_time:'00:00',field_order:'并发1'};
-    const requests=await Promise.all([request('/api/schedule',{token:admin,body}),request('/api/schedule',{token:admin,body})]);assert.deepEqual(requests.map(r=>r.status).sort(),[200,400]);
+    const requests=await Promise.all([request('/api/schedule',{token:admin,body}),request('/api/schedule',{token:admin,body})]);assert.equal(requests.filter(r=>r.status===200).length,1);assert.ok(requests.some(r=>[400,409].includes(r.status)));
     const list=await call('/api/schedule?season_id='+season.id);const names=list.map(m=>m.field_order);assert.ok(names.indexOf('A2')<names.indexOf('A10'));
     const pub=await call(`/api/public/teams?season_id=${season.id}&league_type=${encodeURIComponent(comp.league_type)}`,undefined,'GET',200,null);assert.equal(pub.length,2);
     await call(`/api/competitions/${comp.id}/discipline`,undefined,'GET',403,playerToken);

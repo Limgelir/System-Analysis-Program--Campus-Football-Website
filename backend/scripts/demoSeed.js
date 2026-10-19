@@ -516,7 +516,7 @@ async function insertSchedules(connection, seasonId, definitions) {
     );
     schedule.id = Number(result.insertId);
     await connection.execute('UPDATE match_schedules SET field_order_sort=? WHERE id=?',[require('../utils/competitionRules').fieldOrderSortKey(schedule.field_order),schedule.id]);
-    const { ROLES } = require('../utils/officialAssignments');
+    const ROLES = require('../utils/officialAssignments').ROLES.filter(r=>require('../utils/officialRequirements').roleRequired({},r.code));
     for (const role of ROLES) {
       const person = schedule[{ main: 'main_referee', assistant1: 'assistant1', assistant2: 'assistant2', fourth: 'fourth_official', supervisor: 'supervisor' }[role.code]];
       await connection.execute(`INSERT INTO match_official_assignments (schedule_id,role,source_type,referee_id,name_snapshot) VALUES (?,?,'system',?,?)`, [schedule.id,role.code,person.id,person.name]);

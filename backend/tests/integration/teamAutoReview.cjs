@@ -167,6 +167,7 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
   });
   await require('./playerGenderTags.cjs')({t,pool,call,players,settings,create,member,get,adminGet,save:async(body,refresh)=>{if(refresh)app=await get();return save(body)},submit,review,current:()=>app,admin,season});
   await require('./teamRegistrationRevocation.cjs')({t,pool,call,players,settings,create,member,submit,review,admin,adminGet,season});
+  await require('./adminTeamManagement.cjs')({t,pool,call,players,settings,create,member,submit,review,admin,adminGet,season,request});
   await t.test('重复执行0023不改变现有记录，自动失败和审核历史审计通过',async()=>{
     const tables=['team','team_player','team_applications','team_application_events','player_accounts','match_schedules'];const before={};for(const table of tables)before[table]=(await pool.query('SELECT * FROM '+table+' ORDER BY id'))[0];
     const c=await pool.getConnection();try{await require('../../../db/migrations/0023_team_automatic_review').up(c);}finally{c.release();}

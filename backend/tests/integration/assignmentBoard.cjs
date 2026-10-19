@@ -47,12 +47,12 @@ module.exports=async({t,pool,request,expectStatus,admin,season,base,refs,date})=
   await call('/api/match-signups/'+row.id,{action:'withdraw',revision:row.signup_revision,schedule_revision:row.schedule_revision},'PUT',refs[0].token);
   board=await call('/api/match-signups/assignment-board');assert.equal(board.groups.find(g=>g.competition_id===competition).days.find(d=>d.match_date===date(2)).registrants[0].matches.length,1);
  });
- await t.test('三岗位裁判监督报告可以提交，第四官员配置在报告开始后锁定，旧比赛默认保留四人需求',async()=>{
+ await t.test('三岗位裁判监督报告可以提交，第四官员配置在报告开始后仍可调整，旧比赛默认保留四人需求',async()=>{
   const m=await call('/api/schedule/'+matches[0].id+'/assign-referees',{supervisor_required:true,supervisor_id:refs[0].id},'PUT');
   const reviews=['main','assistant1','assistant2'].map(target_role=>({target_role,score:8}));
   await call('/api/report/schedule/'+m.id+'/supervisor',{reviews},'POST',refs[0].token);
   await call('/api/report/schedule/'+m.id+'/supervisor/submit',{},'POST',refs[0].token);
-  await call('/api/schedule/'+m.id+'/assign-referees',{fourth_required:true},'PUT',admin,400);
+  await call('/api/schedule/'+m.id+'/assign-referees',{fourth_required:true},'PUT',admin);
   const legacy=await call('/api/schedule',{...base,field_order:'BOARD-LEGACY',supervisor_required:false},'POST');assert.equal(legacy.fourth_required,true);assert.ok(legacy.pending_assignment_roles.includes('第四官员'));
   const c=await pool.getConnection();try{const before=(await c.query('SELECT * FROM match_schedules ORDER BY id'))[0];await require('../../../db/migrations/0028_referee_assignment_board').up(c);assert.deepEqual((await c.query('SELECT * FROM match_schedules ORDER BY id'))[0],before);}finally{c.release();}
  });

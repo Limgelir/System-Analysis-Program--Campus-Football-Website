@@ -1,0 +1,83 @@
+import { test, expect } from '@playwright/test'
+import { createRequire } from 'node:module'
+const mysql = createRequire(import.meta.url)('../../../backend/node_modules/mysql2/promise')
+
+test('裁判弃权报告在桌面和手机可填写、保存回显、提交并锁定', async ({ page }) => {
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  const password = process.env.E2E_PASSWORD
+  const api = async (path, data, token, method = data === undefined ? 'GET' : 'POST') => {
+    const r = await page.request.fetch('/api' + path, { method, data, headers: token ? { Authorization: 'Bearer ' + token } : {} })
+    expect(r.ok(), `${path}: ${await r.text()}`).toBeTruthy()
+    return (await r.json()).data
+  }
+  const admin = await api('/admin/login', { username: 'e2e-admin', password })
+  const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
+  const season = await api('/season', { season_code: 'E2E-FORFEITS', season_name: '弃权浏览器验收', start_date: today, end_date: '2099-12-31', is_active: true }, admin.token)
+  // 只在运行器新建的随机隔离库准备无名单球队。
+  if (process.env.REFWEB_E2E !== '1' || !process.env.DB_NAME.startsWith('tj_refweb_e2e_') || !process.env.DB_NAME.endsWith('_test')) throw Error('仅限隔离E2E库')
+  const c = await mysql.createConnection({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME })
+  const teams = []
+  try {
+    await c.execute('INSERT INTO season_competitions(season_id,league_type) VALUES (?,?)', [season.id, '弃权浏览器赛'])
+    for (const name of ['弃权主队', '弃权客队']) teams.push((await c.execute('INSERT INTO team(season_id,team_name,league_type) VALUES (?,?,?)', [season.id, name, '弃权浏览器赛']))[0].insertId)
+  } finally { await c.end() }
+  const referee = await api('/referee/login', { student_id: 'E2E-19', password })
+  const reg = await api('/season-registration/current/submit', { name: '浏览器裁判19', college: '土木工程学院', height_cm: 175, weight_kg: 65, grade: '三级', match_types: ['足协杯'] }, referee.token)
+  await api('/season-registration/admin/' + reg.id + '/approve', { reason: '弃权验收' }, admin.token)
+  const match = await api('/schedule', { team_a_id: teams[0], team_b_id: teams[1], match_type: '弃权浏览器赛', match_date: today, match_time: '00:00', venue: '樱花人草', field_order: 'E2E-F', main_referee_id: referee.id, fourth_required: false, supervisor_required: false }, admin.token)
+
+  await page.goto('/referee-login')
+  await page.getByPlaceholder('请输入学号').fill('E2E-19')
+  await page.getByPlaceholder('请输入密码', { exact: true }).fill(password)
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page).toHaveURL(/referee-dashboard$/)
+  await page.goto('/referee-report/' + match.id)
+  const side = page.getByLabel('弃权方', { exact: true })
+  await expect(side).toHaveValue('none')
+  await expect(side.locator('option')).toHaveText(['正常比赛（无弃权）', '主队弃权 · 弃权主队', '客队弃权 · 弃权客队', '双方弃权'])
+  page.once('dialog', d => d.dismiss())
+  await side.selectOption('home')
+  await expect(side).toHaveValue('none')
+  page.once('dialog', d => d.accept())
+  await side.selectOption('home')
+  await expect(page.getByLabel('主队判定比分')).toHaveValue('0')
+  await expect(page.getByLabel('客队判定比分')).toHaveValue('3')
+  await expect(page.locator('.goal-item')).toHaveCount(0)
+  await expect(page.getByText('主队点球战得分', { exact: true })).toBeHidden()
+  await page.getByLabel('客队判定比分').fill('5')
+  await page.getByRole('button', { name: '保存裁判员区', exact: true }).click()
+  await expect(page.locator('.report-notice')).toContainText('保存成功')
+  await page.reload()
+  await expect(side).toHaveValue('home')
+  await expect(page.getByLabel('客队判定比分')).toHaveValue('5')
+  await expect(page.locator('.goal-item')).toHaveCount(0)
+  await side.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: 'test-results/forfeit-desktop.png' })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  page.once('dialog', d => d.accept())
+  await side.selectOption('away')
+  await expect(page.getByLabel('主队判定比分')).toHaveValue('3')
+  await expect(page.getByLabel('客队判定比分')).toHaveValue('0')
+  page.once('dialog', d => d.accept())
+  await side.selectOption('both')
+  await expect(page.getByLabel('主队判定比分')).toHaveValue('')
+  await page.getByRole('button', { name: '保存裁判员区', exact: true }).click()
+  await expect(page.locator('.report-notice')).toContainText('请填写双方弃权判定比分')
+  await page.getByLabel('主队判定比分').fill('0')
+  await page.getByLabel('客队判定比分').fill('0')
+  await page.getByRole('button', { name: '保存裁判员区', exact: true }).click()
+  await expect(page.locator('.report-notice')).toContainText('保存成功')
+  await side.scrollIntoViewIfNeeded()
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy()
+  await page.screenshot({ path: 'test-results/forfeit-mobile.png' })
+  await page.getByRole('button', { name: '提交裁判员区', exact: true }).click()
+  await expect(page.locator('.report-notice')).toContainText('提交成功')
+  await expect(side).toBeDisabled()
+  const report = await api('/report/schedule/' + match.id, undefined, referee.token)
+  expect(report.report.forfeit_side).toBe('both')
+  expect(report.report.main_report_status).toBe('submitted')
+  expect(report.goals).toEqual([])
+  expect(errors).toEqual([])
+})

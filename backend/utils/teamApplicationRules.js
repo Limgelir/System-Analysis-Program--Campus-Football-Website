@@ -31,7 +31,7 @@ function correction(previous,proposed,replaceable){
 }
 function differences(before,after){
   if(!before)return [];
-  const rows=[];for(const [field,label]of [['team_name','队名'],['shirt_color','上衣'],['shorts_color','裤子'],['socks_color','袜子']])if(before[field]!==after[field])rows.push(`${label}：${before[field]||'/'} → ${after[field]||'/'}`);
+  const rows=[];for(const [field,label]of [['team_name','队名'],['manager_player_id','负责人账号'],['shirt_color','上衣'],['shorts_color','裤子'],['socks_color','袜子']])if(before[field]!==after[field])rows.push(`${label}：${before[field]||'/'} → ${after[field]||'/'}`);
   for(const old of before.members){const m=after.members.find(v=>v.id===old.id);const name=old.profile_snapshot?.name||`球员#${old.player_id}`;
     if(!m){rows.push(`移除：${name}`);continue;}if(m.player_id!==old.player_id)rows.push(`替换：${name} → ${m.profile_snapshot?.name||'#'+m.player_id}`);
     if((m.remark||null)!==(old.remark||null))rows.push(`${name}备注：${old.remark||'未填'} → ${m.remark||'未填'}`);

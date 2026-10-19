@@ -9,8 +9,9 @@ const collegePreview=collegeReviewPreview||process.argv.includes('--colleges');
 const autoReview=collegePreview||process.argv.includes('--team-auto-review');
 const supervision=process.argv.includes('--supervision');
 const assignmentBoard=process.argv.includes('--assignment-board');
+const futsal=process.argv.includes('--futsal');
 const deletion=process.argv.includes('--schedule-deletion');
-const visibility=process.argv.includes('--visibility'),backfill=process.argv.includes('--backfill'),imports=process.argv.includes('--imports')||backfill,adminPort=assignmentBoard?5222:collegeReviewPreview?5220:collegePreview?5218:autoReview?5214:deletion?5212:supervision?5210:backfill?5208:imports?5206:visibility?5204:5202,playerPort=assignmentBoard?5223:collegeReviewPreview?5221:collegePreview?5219:autoReview?5215:deletion?5213:supervision?5211:backfill?5209:imports?5207:visibility?5205:5203;
+const visibility=process.argv.includes('--visibility'),backfill=process.argv.includes('--backfill'),imports=process.argv.includes('--imports')||backfill,adminPort=futsal?5224:assignmentBoard?5222:collegeReviewPreview?5220:collegePreview?5218:autoReview?5214:deletion?5212:supervision?5210:backfill?5208:imports?5206:visibility?5204:5202,playerPort=futsal?5225:assignmentBoard?5223:collegeReviewPreview?5221:collegePreview?5219:autoReview?5215:deletion?5213:supervision?5211:backfill?5209:imports?5207:visibility?5205:5203;
 const day=n=>new Date(Date.now()+8*3600000+n*86400000).toISOString().slice(0,10);
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZz0AAAAASUVORK5CYII=','base64');
 async function main(){
@@ -100,6 +101,10 @@ async function main(){
     }
     // Synthetic earlier roster dates make the preloaded past reports historically consistent.
     await c.execute('UPDATE team_roster_batches SET effective_from=? WHERE team_id IN (?,?)',[day(-10),...teams]);
+    if(futsal){
+      await require('./seedFutsalPreview')({api,refs,season,comp,teams,password,cache,base,playerPort,connection:c});
+      await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});return;
+    }
     if(assignmentBoard){
       await require('./seedAssignmentBoardPreview')({api,refs,season,comp,teams,password,cache,base,playerPort,connection:c});
       await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});return;

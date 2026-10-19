@@ -12,6 +12,8 @@ async function publish(c, reportId, historyRow) {
   }
   const result = { home_score: data.home_score, away_score: data.away_score,
     home_penalty_score: data.home_penalty_score, away_penalty_score: data.away_penalty_score, goals };
+  // 旧普通比赛的公开快照结构保持兼容。
+  if (data.forfeit_side && data.forfeit_side !== 'none') result.forfeit_side = data.forfeit_side;
   await c.execute(`INSERT INTO match_publications (report_id,source_history_id,version_no,result_snapshot,published_at)
     VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE source_history_id=VALUES(source_history_id),version_no=VALUES(version_no),result_snapshot=VALUES(result_snapshot),published_at=VALUES(published_at)`,
   [reportId,historyRow.id,historyRow.version_no,JSON.stringify(result),w.chinaSql()]);

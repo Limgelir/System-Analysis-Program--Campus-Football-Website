@@ -26,6 +26,8 @@ const REPORT_ROLE_DEFINITIONS = Object.freeze({
     code: 'fourth',
     key: 'fourth_official_id'
   },
+  second: {label:'第二裁判员',code:'second',key:'second_referee_id'},
+  timekeeper: {label:'计时员',code:'timekeeper',key:'timekeeper_id'},
   supervisor: {
     label: '裁判监督',
     code: 'supervisor',
@@ -63,6 +65,8 @@ function resolveAssignedRoleCode(schedule, userId) {
   if (toNullableInt(schedule.assistant1_id) === normalizedUserId) return 'assistant1';
   if (toNullableInt(schedule.assistant2_id) === normalizedUserId) return 'assistant2';
   if (toNullableInt(schedule.fourth_official_id) === normalizedUserId) return 'fourth';
+  if (toNullableInt(schedule.second_referee_id) === normalizedUserId) return 'second';
+  if (toNullableInt(schedule.timekeeper_id) === normalizedUserId) return 'timekeeper';
   if (toNullableInt(schedule.supervisor_id) === normalizedUserId) return 'supervisor';
 
   return null;

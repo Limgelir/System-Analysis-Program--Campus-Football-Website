@@ -23,7 +23,7 @@ import {matchSignupAPI} from '../api/index.js'
 import {intentionText,roleText} from '../utils/matchSignup.js'
 const props=defineProps({scheduleId:{type:[Number,String],required:true}})
 const open=ref(false),items=ref([]),page=ref(1),pagination=ref({}),histories=ref({}),loading=ref(false),error=ref('')
-const operations={signup:'报名',update:'修改意向 / 确认改期',withdraw:'撤回',reapply:'重新报名'}
+const operations={format_change:'管理员切换安排类型（无有效意向时自动撤回）',signup:'报名',update:'修改意向 / 确认改期',withdraw:'撤回',reapply:'重新报名'}
 let sequence=0
 const formatDate=value=>new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})
 async function load(){const seq=++sequence;loading.value=true;error.value='';try{const {data}=await matchSignupAPI.adminList(props.scheduleId,{page:page.value,page_size:20});if(seq===sequence){items.value=data.items;pagination.value=data.pagination;histories.value={}}}catch(e){if(seq===sequence)error.value=e?.response?.data?.message||'报名列表读取失败'}finally{if(seq===sequence)loading.value=false}}

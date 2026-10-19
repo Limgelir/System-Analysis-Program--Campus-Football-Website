@@ -1,16 +1,16 @@
 # 球员系统接口与数据约定
 
-性别与标签（迁移0030）：球员注册必填 `gender: "male" | "female"`；旧账号返回 `null`，前端立即弹窗。本人 `PUT /api/player/me/gender` 仅允许首次填入，管理员 `PUT /api/player-admin/:id/gender` 须同时提供 `reason`；两者均须账号版本 `If-Match`，保存递增版本并记录 `gender_changed`，本人重复修改返回409 `PLAYER_GENDER_LOCKED`。
+2026-09-29本地变更（0030，未上线）：球员注册必填 `gender: "male" | "female"`；旧账号返回 `null`，前端立即弹窗。本人 `PUT /api/player/me/gender` 仅允许首次填入，管理员 `PUT /api/player-admin/:id/gender` 须同时提供 `reason`；两者均须账号版本 `If-Match`，保存递增版本并记录 `gender_changed`，本人重复修改返回409 `PLAYER_GENDER_LOCKED`。
 
 赛事设置新增布尔 `enable_sports_training`（默认true）、`enable_football_specialty`（默认false）、可空单项上限 `max_football_specialty_players` 和 `combined_player_limits` 数组。组合格式为 `{ "tags": ["foreign", "football_specialty"], "max": 5 }`，标签可选 `foreign/sports_training/football_specialty`，须选择2—3个已启用且不重复的标签，最多4个唯一组合；同一球员在一组内只计1人。名单增加布尔 `is_football_specialty`；关闭的标签不会在展示DTO中暴露有效标记或参与自动限制。
 
-球员 `POST /api/player/team-applications/:id/submit-manual` 使用申请版本 `If-Match`，仅自动失败且仍有提交权限的申请可调用；重新验证基本资料后进入pending，保存 `auto_review.manual_requested=true`。管理员仍须使用 `override-approve` 并填写原因来通过未满足自动限制的申请。在线名单缺性别返回400 `TEAM_GENDER_REQUIRED`，任何人工通过入口也不能跳过。详见[球员标签规则实现](../backend/utils/teamTags.js)。
+球员 `POST /api/player/team-applications/:id/submit-manual` 使用申请版本 `If-Match`，仅自动失败且仍有提交权限的申请可调用；重新验证基本资料后进入pending，保存 `auto_review.manual_requested=true`。管理员仍须使用 `override-approve` 并填写原因来通过未满足自动限制的申请。在线名单缺性别返回400 `TEAM_GENDER_REQUIRED`，任何人工通过入口也不能跳过。详见[本地验收说明](https://github.com/Limgelir/TJ-RefWeb/blob/1013304/docs/player-gender-tags-local-verification.md)。
 
-学院管理：注册学院及学院修改申请的新学院须为共享目录50项之一。球员修改学院必须截图审核；直接修改资料接口不能改变学院。裁判本人 `PUT /api/referee/:id/college` 仍直接保存，与赛季状态独立。迁移0025只自动更新可靠匹配的裁判学院，保留球员原学院；0026新增球员学院审核表。球队自动检查读取当前生效账号学院。详见[学院规则实现](../backend/utils/collegeIdentity.js)。
+2026-09-28本地变更：注册学院及学院修改申请的新学院须为共享目录50项之一。球员修改学院必须截图审核；直接修改资料接口不能改变学院。裁判本人 `PUT /api/referee/:id/college` 仍直接保存，与赛季状态独立。迁移0025只自动更新可靠匹配的裁判学院，保留球员原学院；0026新增球员学院审核表。球队自动检查读取当前生效账号学院。详见[学院约定与验收](https://github.com/Limgelir/TJ-RefWeb/blob/1013304/docs/college-selection-verification.md)，本次尚未上线。
 
-报名限制：赛事可选报名限制、`auto_failed`状态、批准前重查、管理员填写原因人工通过、跨赛事参队明细和学籍详情以[球队自动审核规则](team-auto-review-rules.md)为准。下文早期“外援／运训仅人工审核”等描述由该约定补充。
+2026-09-27补充：赛事可选报名限制、`auto_failed`状态、批准前重查、管理员填写原因人工通过、跨赛事参队明细和学籍详情以[球队自动审核约定](https://github.com/Limgelir/TJ-RefWeb/blob/1013304/docs/team-auto-review-verification.md)为准。新增迁移0023已上线，原数据保留证据见[生产记录](https://github.com/Limgelir/TJ-RefWeb/blob/1013304/docs/team-auto-review-production-verification-20260927.md)。下文早期“外援／运训仅人工审核”等描述由该约定补充。
 
-赛季字段：共用管理员 `POST /api/season` 的 `season_code`、`season_name` 去除首尾空格后均为必填、最多20个Unicode字符；超过时返回400及明确中文原因，不改变当前启用赛季。比赛时间、场地与裁判报名规则见[阶段2接口约定](phase2-signup-contract.md)。
+2026-09-18阶段4复核：当前迁移版本0019，球员接口和权限没有新增变化。共用管理员 `POST /api/season` 的 `season_code`、`season_name` 去除首尾空格后均为必填、最多20个Unicode字符；超过时返回400及明确中文原因，不改变当前启用赛季。比赛时间、场地与裁判报名规则见[阶段2接口约定](phase2-signup-contract.md)，综合证据见[阶段4验收](https://github.com/Limgelir/TJ-RefWeb/blob/1013304/docs/phase4-verification.md)。
 
 适用：第1—5批（阶段1—9）。已确认业务规则以 `player-system-requirements.md` 为准。本文明确已实现接口及后续批次的接入约定，标为“后续”的路径目前没有业务路由。
 
@@ -27,7 +27,7 @@
 | POST `/api/player-admin/college-changes/:id/approve` | `If-Match`申请版本；`account_revision`必填，`reason`可选；复核后事务更新学院、审计和提示 |
 | POST `/api/player-admin/college-changes/:id/return` | `If-Match`申请版本；`reason`必填，账号学院不变 |
 
-申请独立于赛季/窗口，最多一条待审；重提须上传截图。非法学院400 `COLLEGE_SELECTION_REQUIRED`，已有待审409 `COLLEGE_CHANGE_PENDING`，状态/版本/账号变化409。截图仅本人/管理员可读、private/no-store。完整规则见[学院审核实现](../backend/services/playerCollegeChangeService.js)。
+申请独立于赛季/窗口，最多一条待审；重提须上传截图。非法学院400 `COLLEGE_SELECTION_REQUIRED`，已有待审409 `COLLEGE_CHANGE_PENDING`，状态/版本/账号变化409。截图仅本人/管理员可读、private/no-store。完整规则见[学院审核验收](https://github.com/Limgelir/TJ-RefWeb/blob/1013304/docs/college-change-review-verification.md)。
 
 ## 工程与身份
 

@@ -18,13 +18,14 @@ import { useRouter } from 'vue-router'
 import { api, session, version, messageOf, clearSession } from '../session'
 const router = useRouter(), profile = reactive({ name: session.player.name })
 const password = reactive({ current_password: '', new_password: '', password_confirm: '' }), student = reactive({ student_id: '', current_password: '' })
-const profileSaved = ref(0)
+// 学院组件可刷新共享账号；表单版本只随其内容加载或成功保存更新。
+const profileSaved = ref(0), profileRevision = ref(session.player.revision)
 const busy = ref(false), error = ref(''), success = ref(''), conflict = ref(false)
-async function reload() { if(!confirmDraftLeave(document.querySelector('.profile-form')))return; busy.value = true; try { session.player = await api.get('/me'); Object.assign(profile, { name: session.player.name }); profileSaved.value++; error.value = ''; conflict.value = false } catch(e) { error.value = messageOf(e) } finally { busy.value = false } }
+async function reload() { if(!confirmDraftLeave(document.querySelector('.profile-form')))return; busy.value = true; try { session.player = await api.get('/me'); Object.assign(profile, { name: session.player.name }); profileRevision.value = session.player.revision; profileSaved.value++; error.value = ''; conflict.value = false } catch(e) { error.value = messageOf(e) } finally { busy.value = false } }
 async function save(kind) {
   busy.value = true; error.value = ''; success.value = ''; conflict.value = false
   try {
-    if (kind === 'profile') { session.player = await api.put('/me', profile, version()); profileSaved.value++; success.value = '基本资料已保存。' }
+    if (kind === 'profile') { session.player = await api.put('/me', profile, { headers: { 'If-Match': String(profileRevision.value) } }); profileRevision.value = session.player.revision; profileSaved.value++; success.value = '基本资料已保存。' }
     else { await api.put(kind === 'student' ? '/me/student-id' : '/me/password', kind === 'student' ? student : password, version()); clearSession(); await router.push('/login?notice=changed') }
   } catch(e) { error.value = messageOf(e); conflict.value = e.response?.data?.code === 'PLAYER_REVISION_CONFLICT' } finally { busy.value = false }
 }

@@ -54,7 +54,7 @@ test('先建后派、裁判搜索、非系统名单新增与来源显示',async(
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['学号','姓名','号码','场上队长','守门员','外援','运训','备注'],[student_id,name+'球员','1','是','是','否','是','浏览器测试']]),'名单');
     await admin.goto('/admin-teams');const importer=admin.locator('.roster-import').first();await importer.getByLabel('队伍名称',{exact:true}).fill(name);await importer.getByLabel('赛事类型',{exact:true}).selectOption('足协杯');await importer.getByLabel('负责人当前学号').fill(student_id);await importer.getByLabel('负责人姓名',{exact:true}).fill(name+'球员');for(const label of ['上衣主要颜色','裤子主要颜色','袜子主要颜色'])await importer.getByLabel(label).fill('红');await importer.getByLabel('新版名单 Excel').setInputFiles({name:'roster.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:XLSX.write(wb,{type:'buffer',bookType:'xlsx'})});await importer.getByRole('button',{name:'预览导入名单',exact:true}).click();await expect(importer.locator('.import-preview')).toContainText(name+'球员');await importer.getByRole('button',{name:'确认审核通过并立即导入'}).click();await expect(importer.getByRole('status')).toContainText('立即生效');teams.push((await api(admin,'/team/list')).data.teams.find(t=>t.team_name===name).id);
   }
-  await admin.goto('/admin-schedule');const form=admin.locator('form.form');await expect(form.getByLabel('本场需要第四官员')).toBeChecked();await expect(form.getByLabel('本场需要裁判监督')).not.toBeChecked();await form.locator('select').nth(0).selectOption('足协杯');await form.locator('select').nth(1).selectOption(String(teams[0]));await form.locator('select').nth(2).selectOption(String(teams[1]));await form.locator('input[type=date]').fill('2026-09-07');await form.getByLabel('开球时间').fill('17:35');await form.getByLabel('比赛场地 *').selectOption('樱花人草');await form.getByPlaceholder('例如 A1、J1、1').fill('A1');await form.getByRole('button',{name:'添加赛程'}).click();await expect(admin.locator('.alert.success')).toContainText('已创建');
+  await admin.goto('/admin-schedule');const form=admin.locator('form.form');await expect(form.getByLabel('本场需要第四官员')).toBeChecked();await expect(form.getByLabel('本场需要裁判监督')).not.toBeChecked();await form.locator('select').nth(0).selectOption('足协杯');await form.locator('select').nth(1).selectOption(String(teams[0]));await form.locator('select').nth(2).selectOption(String(teams[1]));await form.locator('input[type=date]').fill('2026-09-07');await form.getByLabel('比赛时间').fill('17:35');await form.getByLabel('比赛场地 *').selectOption('樱花人草');await form.getByPlaceholder('例如 A1、J1、1').fill('A1');await form.getByRole('button',{name:'添加赛程'}).click();await expect(admin.locator('.alert.success')).toContainText('已创建');
   match=(await api(admin,`/schedule?season_id=${season.id}`)).data[0];
   await admin.goto(`/admin-assignments?view=all&season_id=${season.id}&match=${match.id}`);
   await admin.getByLabel('本场需要裁判监督',{exact:true}).check();
@@ -89,21 +89,21 @@ test('选派列表允许裁判员与第四官员双向选择同一人，系统�
   }
 })
 
-test('开球时间在轻量编辑、详情、裁判页同步，午夜合法，手机表单不溢出',async()=>{
+test('比赛时间在轻量编辑、详情、裁判页同步，午夜合法，手机表单不溢出',async()=>{
   await admin.goto('/admin-schedule');
   const row=admin.locator('tbody > tr').filter({has:admin.getByRole('button',{name:'轻量编辑',exact:true})}).first();
   await expect(row).toContainText('17:35');
   await row.getByRole('button',{name:'轻量编辑',exact:true}).click();
-  await admin.getByLabel('开球时间',{exact:true}).fill('18:00');
+  await admin.getByLabel('比赛时间',{exact:true}).fill('18:00');
   await admin.getByRole('button',{name:'保存轻量编辑',exact:true}).click();
   await expect(admin.locator('.alert.success').first()).toContainText('已更新');
   await admin.goto(`/admin-schedule/${match.id}`);
-  await expect(admin.getByLabel('开球时间',{exact:true})).toHaveValue('18:00');
-  await admin.getByLabel('开球时间',{exact:true}).fill('00:00');
+  await expect(admin.getByLabel('比赛时间',{exact:true})).toHaveValue('18:00');
+  await admin.getByLabel('比赛时间',{exact:true}).fill('00:00');
   await admin.getByRole('button',{name:'保存赛程更新',exact:true}).click();
   await expect(admin.locator('.alert.success').first()).toBeVisible();
   expect((await api(admin,`/schedule/${match.id}`)).data.match_time).toBe('00:00');
-  await admin.getByLabel('开球时间',{exact:true}).fill('17:35');
+  await admin.getByLabel('比赛时间',{exact:true}).fill('17:35');
   await admin.getByRole('button',{name:'保存赛程更新',exact:true}).click();
   await expect.poll(async()=> (await api(admin,`/schedule/${match.id}`)).data.match_time).toBe('17:35');
   await admin.setViewportSize({width:390,height:844});
@@ -213,7 +213,7 @@ test('裁判多选报名、管理员报名优先选派与未报名候选可选',
   await card.getByRole('button',{name:'撤回报名',exact:true}).click();await expect(card).toContainText('已撤回');await expect(card).toContainText('已选派：裁判员');
   await card.getByRole('button',{name:'重新报名',exact:true}).click();await expect(card).toContainText('已报名');await expect(referee.getByRole('status')).toHaveText('意向已保存；正式选派以“我的执法”为准');
   await admin.goto(`/admin-schedule/${signMatch.id}`);await admin.getByRole('button',{name:'查看报名名单与变化记录',exact:true}).click();await expect(admin.locator('.signup-summary')).toContainText('裁判员、助理裁判员');await admin.getByRole('button',{name:'变化记录',exact:true}).click();await expect(admin.locator('.signup-summary ol')).toContainText('重新报名');
-  await admin.getByLabel('开球时间',{exact:true}).fill('18:00');await admin.getByLabel('比赛场地 *').selectOption('嘉定天然草');await admin.getByRole('button',{name:'保存赛程更新',exact:true}).click();await expect(admin.locator('.alert.success')).toBeVisible();
+  await admin.getByLabel('比赛时间',{exact:true}).fill('18:00');await admin.getByLabel('比赛场地 *').selectOption('嘉定天然草');await admin.getByRole('button',{name:'保存赛程更新',exact:true}).click();await expect(admin.locator('.alert.success')).toBeVisible();
   await referee.getByRole('button',{name:'刷新比赛状态',exact:true}).click();await expect(card).toContainText('比赛时间已变更');await expect(card).toContainText('比赛场地已变化');await card.getByRole('button',{name:'保存意向',exact:true}).click();await expect(card).not.toContainText('比赛时间已变更');
 })
 
@@ -252,7 +252,7 @@ test('阶段3：列表筛选与页码贯穿详情、报告、返回和浏览器�
 test('阶段3：取消离开保护输入、表单错误、弹窗焦点和手机导航',async({browser})=>{
   const p=await pageFor(browser);await login(p);await p.goto('/admin-schedule');
   p.removeAllListeners('dialog');let lastDialog='';p.on('dialog',async d=>{lastDialog=d.message();await d.dismiss()});
-  await p.getByLabel('开球时间 *',{exact:true}).fill('17:36');await p.getByRole('link',{name:'赛季设置',exact:true}).click();await expect(p).toHaveURL(/admin-schedule$/);expect(lastDialog).toContain('未保存');await expect(p.getByLabel('开球时间 *',{exact:true})).toHaveValue('17:36');
+  await p.getByLabel('比赛时间 *',{exact:true}).fill('17:36');await p.getByRole('link',{name:'赛季设置',exact:true}).click();await expect(p).toHaveURL(/admin-schedule$/);expect(lastDialog).toContain('未保存');await expect(p.getByLabel('比赛时间 *',{exact:true})).toHaveValue('17:36');
   p.removeAllListeners('dialog');p.on('dialog',d=>d.accept());await p.getByRole('link',{name:'赛季设置',exact:true}).click();await expect(p).toHaveURL(/admin-seasons$/);
   await p.goto('/admin-schedule');await p.getByRole('button',{name:'添加赛程',exact:true}).click();await expect(p.locator('.field-error').first()).toBeVisible();
   await p.goto('/admin-external-referees');await p.getByRole('button',{name:'新增非系统裁判',exact:true}).click();const dialog=p.getByRole('dialog');await expect(dialog).toBeVisible();await expect(dialog.getByLabel('姓名',{exact:true})).toBeFocused();

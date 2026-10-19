@@ -49,6 +49,8 @@
         <div class="info-desc">请先前往赛季管理启用赛季，再依次进行建队、名单导入与赛程创建。</div>
       </div>
 
+      <AdminScheduleImport v-if="canCreateSchedule" :key="currentSeason.id" :season="currentSeason" @imported="onSchedulesImported" />
+
       <div class="content-grid">
         <div class="card">
           <h3>新建赛程</h3>
@@ -112,9 +114,9 @@
                 >
               </div>
               <div class="form-group">
-                <label for="formData-match-time">开球时间 *</label>
-                <input id="formData-match-time" v-model="formData.match_time" type="text" inputmode="text" maxlength="5" placeholder="17:35" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" :required="true" :disabled="false" aria-describedby="formData-time-help">
-                <small id="formData-time-help" class="cell-meta">中国标准时间 · 24小时制 HH:mm</small>
+                <label for="formData-match-time">比赛时间 *</label>
+                <input id="formData-match-time" v-model="formData.match_time" type="text" inputmode="text" maxlength="11" placeholder="15:00或15:00-16:00" :required="true" :disabled="false" aria-describedby="formData-time-help">
+                <small id="formData-time-help" class="cell-meta">中国标准时间 · 24小时制，如15:00或15:00-16:00；结束时间仅展示，不支持跨午夜</small>
               </div>
 
               <div class="form-group">
@@ -127,7 +129,8 @@
               </div>
             </div>
 
-            <label class="supervision-choice"><input type="checkbox" v-model="formData.fourth_required"> 本场需要第四官员</label>
+            <label class="supervision-choice"><input type="checkbox" v-model="formData.futsal"> 五人制裁判安排</label>
+            <label v-if="!formData.futsal" class="supervision-choice"><input type="checkbox" v-model="formData.fourth_required"> 本场需要第四官员</label>
             <label class="supervision-choice"><input type="checkbox" v-model="formData.supervisor_required"> 本场需要裁判监督</label>
             <div class="inline-tip">
               赛程创建后会自动生成对应空报告；所需岗位可稍后补派，未派满时会在列表中持续显示“待选派”提醒。
@@ -153,7 +156,7 @@
               <CompetitionOptions :season-id="selectedSeason?.id" />
             </select>
           </div>
-          <p class="viewing-season">仅开球前可删除比赛，已有报名、选派及报告会一并删除。时间待定的比赛需先补齐开球时间。</p>
+          <p class="viewing-season">仅开球前可删除比赛，已有报名、选派及报告会一并删除。时间待定的比赛需先补齐比赛时间。</p>
 
           <div class="season-filter">
             <label for="schedule-season">查看赛季</label>
@@ -191,7 +194,7 @@
                 <tr>
                   <th>比赛类型</th>
                   <th>对阵</th>
-                  <th>比赛日期 / 开球时间</th>
+                  <th>比赛日期 / 比赛时间</th>
                   <th>场序</th>
                   <th>当前状态</th>
                   <th>操作</th>
@@ -203,12 +206,13 @@
                     <td>{{ item.match_type || '-' }}</td>
                     <td>
                       <div>{{ getDisplayTeams(item) }}</div>
-                      <div class="cell-meta" v-for="official in item.officials" :key="official.id">{{ ({main:'裁判员',assistant1:'第一助理裁判员',assistant2:'第二助理裁判员',fourth:'第四官员',supervisor:'裁判监督'})[official.role] }}：{{ official.name_snapshot }} · {{ official.source_type === 'external' ? '非系统裁判' : '系统裁判' }}</div>
+                      <div class="cell-meta">{{item.futsal?'五人制裁判安排':'普通裁判安排'}}</div>
+                      <div class="cell-meta" v-for="official in item.officials" :key="official.id">{{ ({main:'裁判员',assistant1:'第一助理裁判员',assistant2:'第二助理裁判员',fourth:'第四官员',second:'第二裁判员',timekeeper:'计时员',supervisor:'裁判监督'})[official.role] }}：{{ official.name_snapshot }} · {{ official.source_type === 'external' ? '非系统裁判' : '系统裁判' }}</div>
                       <div class="cell-meta" v-if="item.season_name || item.season_code">
                         {{ item.season_name || item.season_code }}
                       </div>
                     </td>
-                    <td>{{ getDisplayDate(item) }}<div class="cell-meta">{{ displayMatchTime(item.match_time) }}</div><div class="cell-meta">{{ venueText(item) }}</div><div class="cell-meta">有效报名 {{ item.signup_count }}人</div></td>
+                    <td>{{ getDisplayDate(item) }}<div class="cell-meta">{{ displayMatchTime(item.match_time, item.match_end_time) }}</div><div class="cell-meta">{{ venueText(item) }}</div><div class="cell-meta">有效报名 {{ item.signup_count }}人</div></td>
                     <td>{{ item.field_order || '-' }}</td>
                     <td>
                       <div class="status-stack">
@@ -244,6 +248,7 @@
                       >
                         删除
                       </button>
+                      <button type="button" class="btn-secondary btn-inline" @click="fourthSheetSchedule = item">生成四官单</button>
                     </td>
                   </tr>
                 </template>
@@ -279,6 +284,7 @@
       </div>
     </div>
 
+    <FourthOfficialSheetDialog v-if="fourthSheetSchedule" :schedule="fourthSheetSchedule" @close="fourthSheetSchedule = null" @downloaded="pageSuccess = '四官单已生成，正在下载 Word 文档。'" />
     <div v-if="editDialogVisible" class="modal-mask" @click.self="closeQuickEdit">
       <div class="modal-card">
         <div class="modal-header">
@@ -332,9 +338,9 @@
                 <input v-model="editForm.match_date" type="date" :disabled="isScheduleLocked(editingScheduleRecord)" required>
               </div>
               <div class="form-group">
-                <label for="editForm-match-time">开球时间</label>
-                <input id="editForm-match-time" v-model="editForm.match_time" type="text" inputmode="text" maxlength="5" placeholder="17:35" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" :required="Boolean(editingScheduleRecord?.match_time)" :disabled="isScheduleLocked(editingScheduleRecord)" aria-describedby="editForm-time-help">
-                <small id="editForm-time-help" class="cell-meta">中国标准时间 · 24小时制 HH:mm；旧比赛尚未填写时可保留待定</small>
+                <label for="editForm-match-time">比赛时间</label>
+                <input id="editForm-match-time" v-model="editForm.match_time" type="text" inputmode="text" maxlength="11" placeholder="15:00或15:00-16:00" :required="Boolean(editingScheduleRecord?.match_time)" :disabled="isScheduleLocked(editingScheduleRecord)" aria-describedby="editForm-time-help">
+                <small id="editForm-time-help" class="cell-meta">中国标准时间 · 24小时制，如15:00或15:00-16:00；结束时间仅展示，不支持跨午夜；旧比赛尚未填写时可保留待定</small>
               </div>
               <div class="form-group">
                 <label>场序 *</label>
@@ -342,6 +348,7 @@
               </div>
             </div>
 
+            <label class="supervision-choice"><input type="checkbox" v-model="editForm.futsal" :disabled="isScheduleLocked(editingScheduleRecord)"> 五人制裁判安排</label>
             <VenueFields v-model:venue="editForm.venue" v-model:detail="editForm.venue_detail" :required="Boolean(editingScheduleRecord?.venue)" :disabled="isScheduleLocked(editingScheduleRecord)" />
             <p>裁判组请在“裁判选派”模块调整。</p>
 
@@ -371,7 +378,10 @@
 </template>
 
 <script>
+import { formatChangeMessage } from '../utils/officialRoles.js'
 import CompetitionOptions from '../components/CompetitionOptions.vue'
+import AdminScheduleImport from '../components/AdminScheduleImport.vue'
+import FourthOfficialSheetDialog from '../components/FourthOfficialSheetDialog.vue'
 import VenueFields from '../components/VenueFields.vue'
 import AdminMatchSignups from '../components/AdminMatchSignups.vue'
 import { venueText } from '../utils/matchSignup.js'
@@ -406,7 +416,7 @@ function createEmptyScheduleEditForm() {
     team_b_id: '',
     match_date: '',
     match_time: '', venue:'',venue_detail:'',
-    fourth_required: true, supervisor_required: false, field_order: '',
+    futsal: false, fourth_required: true, supervisor_required: false, field_order: '',
     main_referee_id: '',
     assistant1_id: '',
     assistant2_id: '',
@@ -417,10 +427,11 @@ function createEmptyScheduleEditForm() {
 
 export default {
   name: 'AdminSchedule',
-  components: { CompetitionOptions, VenueFields, AdminMatchSignups, SearchableRefereeSelect, ListPagination },
+  components: { FourthOfficialSheetDialog, AdminScheduleImport, CompetitionOptions, VenueFields, AdminMatchSignups, SearchableRefereeSelect, ListPagination },
   data() {
     return {
       loading: false,
+      fourthSheetSchedule: null,
       deleteClockTick: 0, deleteClockTimer: null,
       exporting:false,seasonTotal:0,pagination:{page:1,page_size:20,total:0,total_pages:0},listFilters:{date_from:'',date_to:'',source_type:'',report_status:''},
       submitting: false,
@@ -461,7 +472,7 @@ export default {
         team_b_id: '',
         match_date: '',
         match_time: '', venue:'',venue_detail:'',
-        fourth_required: true, supervisor_required: false, field_order: ''
+        futsal: false, fourth_required: true, supervisor_required: false, field_order: ''
       }
     }
   },
@@ -512,8 +523,13 @@ export default {
     this.editRequestId++
   },
   methods: {
+    async onSchedulesImported(data) {
+      await this.$router.replace({ query: { season_id: String(data.season_id), match_type: data.match_type } })
+      await this.loadSchedules()
+      this.pageSuccess = data.replaced_count ? `已新建 ${data.created_count} 场、替换 ${data.replaced_count} 场，原报名及选派已保留。` : `已批量添加 ${data.count} 场赛程，裁判可在裁判选派中安排。`
+    },
     venueText(value) { return venueText(value) },
-    displayMatchTime(value) { return displayMatchTime(value) },
+    displayMatchTime(value, endTime) { return displayMatchTime(value, endTime) },
     async exportSchedules() {if(this.scheduleLoading||this.exporting)return;this.exporting=true;try{downloadBlob(await scheduleAPI.exportFiltered(this.$route.query),`赛程选派-${this.selectedSeason?.id||'当前'}.csv`)}catch(e){this.pageError=await exportError(e)}finally{this.exporting=false}},
     applyListFilters(){this.$router.replace({query:{...this.$route.query,...Object.fromEntries(Object.entries(this.listFilters).map(([k,v])=>[k,v||undefined])),page:undefined}})},
     clearListFilters(){this.$router.replace({query:{season_id:this.$route.query.season_id}})},
@@ -639,11 +655,12 @@ export default {
 
     buildScheduleEditFormFromItem(item = {}) {
       return {
+        futsal: Boolean(item.futsal),
         match_type: item.match_type || '',
         team_a_id: item.team_a_id ? String(item.team_a_id) : '',
         team_b_id: item.team_b_id ? String(item.team_b_id) : '',
         match_date: item.match_date ? String(item.match_date).slice(0, 10) : '',
-        match_time: item.match_time || '', venue:item.venue||'',venue_detail:item.venue_detail||'',schedule_revision:item.schedule_revision,
+        match_time: item.match_time ? displayMatchTime(item.match_time, item.match_end_time) : '', venue:item.venue||'',venue_detail:item.venue_detail||'',schedule_revision:item.schedule_revision,
         field_order: item.field_order || '',
         main_referee_id: item.main_referee_id_selection || (item.main_referee_id ? String(item.main_referee_id) : ''),
         assistant1_id: item.assistant1_id_selection || (item.assistant1_id ? String(item.assistant1_id) : ''),
@@ -836,18 +853,18 @@ export default {
       this.submitting = true
 
       try {
-        await scheduleAPI.create({
+        const result = await scheduleAPI.create({
           match_type: this.formData.match_type,
           team_a_id: this.formData.team_a_id,
           team_b_id: this.formData.team_b_id,
           match_date: this.formData.match_date,
           match_time: this.formData.match_time, venue:this.formData.venue,venue_detail:this.formData.venue_detail,
-          fourth_required: this.formData.fourth_required, supervisor_required: this.formData.supervisor_required, field_order: this.formData.field_order
+          futsal: this.formData.futsal, fourth_required: this.formData.futsal?false:this.formData.fourth_required, supervisor_required: this.formData.supervisor_required, field_order: this.formData.field_order
         })
 
         this.$markDraftSaved?.(this.$el.querySelector('form'))
         this.resetForm()
-        this.pageSuccess = '赛程已创建，并自动生成了空报告。'
+        this.pageSuccess = result.data?.replaced_count ? '赛程已替换，原报名、选派及历史已保留。' : '赛程已创建，并自动生成了空报告。'
         await this.loadSchedules()
       } catch (error) {
         const message =
@@ -856,7 +873,8 @@ export default {
           error?.message ||
           '添加赛程失败'
 
-        this.pageError = `添加赛程失败：${message}`
+        if (error.code === 'SCHEDULE_REPLACEMENT_CANCELLED') this.pageSuccess = message
+        else this.pageError = `添加赛程失败：${message}`
       } finally {
         this.submitting = false
       }
@@ -961,7 +979,10 @@ export default {
       this.editSuccess = ''
 
       try {
+        const formatChanged=Boolean(this.editForm.futsal)!==Boolean(this.editingScheduleRecord.futsal)
+        if(formatChanged&&!window.confirm(formatChangeMessage))return
         const payload = this.buildScheduleUpdatePayload(this.editForm)
+        payload.confirm_format_change=formatChanged
         const response = await scheduleAPI.update(this.editingScheduleId, payload)
         const detail = this.extractScheduleDetailPayload(response?.data ?? response)
         this.editingScheduleRecord = detail
@@ -992,7 +1013,7 @@ export default {
         team_b_id: '',
         match_date: '',
         match_time: '', venue:'',venue_detail:'',
-        fourth_required: true, supervisor_required: false, field_order: ''
+        futsal: false, fourth_required: true, supervisor_required: false, field_order: ''
       }
       this.pageError = ''
     },
@@ -1078,7 +1099,7 @@ export default {
       const state = item?.delete_state
       if (!state?.can_delete) return state?.reason_message || '请刷新赛程后重试'
       const checked = Date.parse(state.checked_at), kickoff = Date.parse(state.kickoff_at)
-      if (!Number.isFinite(checked) || !Number.isFinite(kickoff)) return '请先补齐开球时间，再判断是否可以删除'
+      if (!Number.isFinite(checked) || !Number.isFinite(kickoff)) return '请先补齐比赛时间，再判断是否可以删除'
       const elapsed = performance.now() - (item.deleteReceivedAt ?? performance.now())
       return checked + elapsed >= kickoff ? '已到开球时间，不能删除比赛' : ''
     },
@@ -1088,7 +1109,7 @@ export default {
     async handleDeleteSchedule(item) {
       const blocked = this.deleteScheduleReason(item)
       if (blocked) { this.pageError = blocked; return }
-      const confirmMsg = `确定删除这场尚未开球的比赛吗？\n\n比赛：${this.getDisplayTeams(item)}\n日期：${this.getDisplayDate(item)} · ${this.displayMatchTime(item.match_time)}（中国标准时间）\n场序：${item.field_order || '-'}\n\n该场报名及报名历史、选派、报告与附件、比分、统计和红黄牌记录将一并删除。裁判账号和球队名单不受影响。\n删除后不可恢复。`
+      const confirmMsg = `确定删除这场尚未开球的比赛吗？\n\n比赛：${this.getDisplayTeams(item)}\n日期：${this.getDisplayDate(item)} · ${this.displayMatchTime(item.match_time, item.match_end_time)}（中国标准时间）\n场序：${item.field_order || '-'}\n\n该场报名及报名历史、选派、报告与附件、比分、统计和红黄牌记录将一并删除。裁判账号和球队名单不受影响。\n删除后不可恢复。`
       if (!window.confirm(confirmMsg)) return
       const expired = this.deleteScheduleReason(item)
       if (expired) { this.pageError = expired; return }

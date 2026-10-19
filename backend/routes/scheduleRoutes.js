@@ -6,6 +6,22 @@ const { requireAdmin, requireAuth, requireReferee } = require('../middleware/aut
 const { ensureViewerCanReadReport } = require('../utils/reportAccess');
 const { publicErrorMessage } = require('../utils/publicError');
 const {sendCsv} = require('../utils/listQuery');
+const scheduleImports = require('../services/scheduleImportService');
+const importUpload = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 6, fieldSize: 100000 } }).single('file');
+const importResult = work => async (req, res) => {
+  try { res.json({ success: true, data: await work(req) }); }
+  catch (e) { const status = e.statusCode || 500; res.status(status).json({ success: false, message: publicErrorMessage(e, '赛程导入失败', status) }); }
+};
+router.get('/import-template', requireAdmin, (req, res, next) => {
+  res.download(require('node:path').resolve(__dirname, '../../赛程导入模板.xlsx'), '赛程导入模板.xlsx', error => { if (error) next(error); });
+});
+router.post('/import-preview', requireAdmin, (req, res, next) => {
+  importUpload(req, res, error => error ? res.status(400).json({ success: false, message: error.code === 'LIMIT_FILE_SIZE' ? '文件不能超过2MB' : '文件上传失败，请检查文件与导入选项' }) : next());
+}, importResult(req => {
+  if (!req.file) throw require('../utils/scheduleValidator').createBusinessError('请上传赛程文件');
+  return scheduleImports.preview(req.body, require('../utils/scheduleImportParser').parseScheduleImport(req.file.buffer, req.file.originalname), req.user);
+}));
+router.post('/import-confirm', requireAdmin, importResult(req => scheduleImports.confirm(req.body, req.user)));
 
 router.get('/workbench',requireAdmin,async(req,res)=>{
   try{res.json({success:true,data:await scheduleService.workbench(req.query.season_id)});}
@@ -15,10 +31,11 @@ router.get('/export',requireAdmin,async(req,res)=>{
   try{
     const {schedules}=await scheduleService.listAdminSchedules({...req.query,seasonId:req.query.season_id,exporting:true});
     const roles=require('../utils/officialAssignments').ROLES;
-    sendCsv(res,['赛季','比赛类型','日期','开球时间','比赛场地','场序','主队','客队',...roles.flatMap(r=>[r.label+'姓名',r.label+'来源']),'裁判员报告','裁判监督报告'],
-      schedules.map(s=>[s.season_name,s.match_type,s.match_date,s.match_time ?? '时间待定',require('../utils/matchVenue').displayVenue(s),s.field_order,s.team_a_name_snapshot,s.team_b_name_snapshot,...roles.flatMap(r=>{
+    sendCsv(res,['赛季','比赛类型','裁判安排','日期','比赛时间','比赛场地','场序','主队','客队',...roles.flatMap(r=>[r.label+'姓名',r.label+'来源']),'裁判员报告','裁判监督报告'],
+      schedules.map(s=>[s.season_name,s.match_type,s.futsal?'五人制':'普通',s.match_date,require('../utils/matchTime').displayMatchTime(s.match_time,s.match_end_time),require('../utils/matchVenue').displayVenue(s),s.field_order,s.team_a_name_snapshot,s.team_b_name_snapshot,...roles.flatMap(r=>{
         if(r.code==='supervisor'&&!s.supervisor_required)return ['无需裁判监督',''];
         if(r.code==='fourth'&&!s.fourth_required)return ['无需第四官员',''];
+        if(!require('../utils/officialRequirements').roleRequired(s,r.code))return ['不适用',''];
         const official=s.officials.find(a=>a.role===r.code);
         return [official?.name_snapshot||'',official?(official.source_type==='external'?'非系统':'系统'):'未选派'];
       }),s.report_main_status,s.supervisor_required?s.report_supervisor_status:'无需裁判监督报告']));
@@ -37,7 +54,8 @@ function buildScheduleAssignmentPayload(body = {}) {
     ? contract.role_fields
     : ['main_referee_id', 'assistant1_id', 'assistant2_id', 'fourth_official_id', 'supervisor_id'];
 
-  const payload = {schedule_revision:body.schedule_revision};
+  const payload = {schedule_revision:body.schedule_revision,confirm_format_change:body.confirm_format_change===true};
+  if(Object.hasOwn(body,'futsal'))payload.futsal=body.futsal;
   if (Object.hasOwn(body, 'fourth_required')) payload.fourth_required = body.fourth_required;
   if (Object.hasOwn(body, 'supervisor_required')) payload.supervisor_required = body.supervisor_required;
   for (const field of roleFields) {
@@ -110,6 +128,12 @@ router.post('/', requireAdmin, async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.code === 'FIELD_ORDER_CONFLICT') {
+      try {
+        const preview = await scheduleImports.previewSingle(buildSchedulePayload(req.body), req.user);
+        return res.status(409).json({ success: false, code: 'SCHEDULE_REPLACEMENT_CONFIRM_REQUIRED', message: '同场序赛程已存在，请确认是否替换', data: preview });
+      } catch (replacementError) { error = replacementError; }
+    }
     safeLog('创建赛程错误:', error, 'error');
     res.status(error.statusCode || 400).json({
       success: false,
@@ -249,6 +273,20 @@ router.get('/my-stat-trends', requireReferee, async (req, res) => {
   }
 });
 
+router.get('/:scheduleId/fourth-official-sheet', requireAdmin, async (req, res) => {
+  try {
+    const { buffer, filename } = await require('../services/fourthOfficialSheetService').generate(parseScheduleId(req.params.scheduleId), req.query.template);
+    res.set('Cache-Control', 'no-store');
+    res.type(require('../utils/fourthOfficialDocument').MIME);
+    res.set('Content-Disposition', `attachment; filename="fourth-official.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buffer);
+  } catch (error) {
+    safeLog('生成四官单错误:', error, 'error');
+    const status = error.statusCode || 500;
+    res.status(status).json({ success: false, message: publicErrorMessage(error, '生成四官单失败，请重试', status) });
+  }
+});
+
 router.get('/:scheduleId', requireAuth, async (req, res) => {
   try {
     const { scheduleId } = req.params;
@@ -283,11 +321,20 @@ router.get('/:scheduleId', requireAuth, async (req, res) => {
 });
 
 
+router.post('/:scheduleId/assignment-warnings', requireAdmin, async (req,res) => {
+  try {
+    const schedule = await scheduleService.getScheduleById(parseScheduleId(req.params.scheduleId));
+    if (!schedule) return res.status(404).json({success:false,message:'赛程不存在'});
+    const warnings = await require('../services/assignmentWarningService').warnings(require('../db'),schedule,buildScheduleAssignmentPayload(req.body));
+    res.json({success:true,data:warnings});
+  } catch (error) { res.status(error.statusCode||400).json({success:false,message:publicErrorMessage(error,'读取时间重合提示失败',error.statusCode||400)}); }
+});
+
 router.put('/:scheduleId/assign-referees', requireAdmin, async (req, res) => {
   try {
     const { scheduleId } = req.params;
     const payload = buildScheduleAssignmentPayload(req.body);
-    const schedule = await scheduleService.assignReferees(parseScheduleId(scheduleId), payload);
+    const schedule = await scheduleService.assignReferees(parseScheduleId(scheduleId), payload, req.user);
 
     res.json({
       success: true,
@@ -335,7 +382,7 @@ router.put('/:scheduleId', requireAdmin, async (req, res) => {
   try {
     const { scheduleId } = req.params;
     const payload = buildSchedulePayload(req.body);
-    const schedule = await scheduleService.updateSchedule(parseScheduleId(scheduleId), payload);
+    const schedule = await scheduleService.updateSchedule(parseScheduleId(scheduleId), payload, req.user);
 
     res.json({
       success: true,

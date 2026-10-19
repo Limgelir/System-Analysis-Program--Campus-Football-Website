@@ -3,6 +3,8 @@ const SCHEDULE_ROLE_FIELDS = Object.freeze([
   'assistant1_id',
   'assistant2_id',
   'fourth_official_id',
+  'second_referee_id',
+  'timekeeper_id',
   'supervisor_id'
 ]);
 
@@ -13,6 +15,8 @@ const SCHEDULE_ROLE_LABELS = Object.freeze({
   assistant1_id: '第一助理裁判员',
   assistant2_id: '第二助理裁判员',
   fourth_official_id: '第四官员',
+  second_referee_id: '第二裁判员',
+  timekeeper_id: '计时员',
   supervisor_id: '裁判监督'
 });
 
@@ -65,6 +69,8 @@ function normalizeScheduleMutationPayload(data = {}) {
   const payload = {
     match_type: toNullableString(data.match_type),
     schedule_revision: data.schedule_revision,
+    ...(Object.hasOwn(data,'futsal')?{futsal:require('./officialRequirements').normalizeFutsal(data.futsal)}:{}),
+    confirm_format_change: data.confirm_format_change === true,
     ...(Object.hasOwn(data,'fourth_required')?{fourth_required:require('./officialRequirements').normalizeFourth(data.fourth_required)}:{}),
     ...(Object.hasOwn(data,'supervisor_required')?{supervisor_required:require('./supervisionRules').normalize(data.supervisor_required)}:{}),
     ...(Object.hasOwn(data,'venue')?{venue:data.venue,venue_detail:data.venue_detail}:{}),
@@ -72,6 +78,7 @@ function normalizeScheduleMutationPayload(data = {}) {
     team_b_id: toNullableInt(data.team_b_id),
     match_date: toNullableString(data.match_date),
     ...(Object.hasOwn(data, 'match_time') ? { match_time: data.match_time } : {}),
+    ...(Object.hasOwn(data, 'match_end_time') ? { match_end_time: data.match_end_time } : {}),
     field_order: fieldOrder(data.field_order),
     main_referee_id: toNullableInt(data.main_referee_id),
     assistant1_id: toNullableInt(data.assistant1_id),
@@ -140,10 +147,14 @@ function validateScheduleMutationPayload(data = {}, { allowUnknownTime = false, 
   Object.assign(payload,require('./matchVenue').validateVenue(payload,{allowUnknown:allowUnknownVenue}));
   const time = payload.match_time;
   if (time === undefined || time === null || time === '') {
-    if (!allowUnknownTime) throw createBusinessError('请填写开球时间（24小时制 HH:mm）', { code: 'MATCH_TIME_REQUIRED' });
+    if (!allowUnknownTime) throw createBusinessError('请填写比赛时间（例如15:00或15:00-16:00）', { code: 'MATCH_TIME_REQUIRED' });
+    if (payload.match_end_time) throw createBusinessError('填写结束时间前必须填写开始时间', { code: 'MATCH_TIME_INVALID' });
     payload.match_time = null;
-  } else if (typeof time !== 'string' || time.length !== 5 || !require('./matchTime').MINUTE_TIME.test(time)) {
-    throw createBusinessError('开球时间必须为24小时制 HH:mm（00:00—23:59）', { code: 'MATCH_TIME_INVALID' });
+    payload.match_end_time = null;
+  } else {
+    const parsed = require('./matchTime').parseMatchTime(time, payload.match_end_time);
+    if (!parsed) throw createBusinessError('比赛时间须为HH:mm或HH:mm-HH:mm，结束时间须晚于开始时间（不支持跨午夜）', { code: 'MATCH_TIME_INVALID' });
+    Object.assign(payload, parsed);
   }
 
   if (!payload.field_order) {
@@ -158,7 +169,8 @@ function validateScheduleMutationPayload(data = {}, { allowUnknownTime = false, 
     });
   }
 
-  const assignedReferees = collectAssignedReferees(payload);
+  const applicableFields = require('./officialAssignments').ROLES.filter(r=>require('./officialRequirements').roleRequired(payload,r.code)).map(r=>r.field);
+  const assignedReferees = collectAssignedReferees(payload).filter(r=>applicableFields.includes(r.field));
   const seen = new Map();
   for (const item of assignedReferees) {
     if(item.field==='supervisor_id')continue;

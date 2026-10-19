@@ -1,10 +1,10 @@
 <template>
   <section class="history-panel">
     <h3>报告版本与操作历史</h3>
-    <p>每次保存、提交、退回、修订和图片操作均追加记录。提交与管理员修订生成新版本；历史只读。旧报告仅保留升级时可证明的内容。</p>
+    <p>保存、提交、退回、修订、图片操作和报告开始后的选派调整均保留历史。提交与管理员修订生成新版本；历史只读。旧报告仅保留升级时可证明的内容。</p>
     <div class="history-actions">
       <button @click="openHistory('main')" :disabled="loading">查看裁判员区历史</button>
-      <button v-if="supervisorRequired" @click="openHistory('supervisor')" :disabled="loading">查看裁判监督区历史</button>
+      <button v-if="supervisorRequired || hasSupervisorHistory" @click="openHistory('supervisor')" :disabled="loading">查看裁判监督区历史</button>
       <button v-if="section" @click="close" :disabled="loading">收起历史</button>
     </div>
     <p v-if="error" class="history-error" role="alert">{{ error }}</p>
@@ -29,7 +29,7 @@
             <h4>{{ side === 'before' ? '操作前' : '操作后' }}</h4>
             <ReportSnapshot :snapshot="detail[`${side}_snapshot`]" />
             <button v-if="detail[`${side}_snapshot`]?.data?.fourth_official_image_path" @click="loadImage(side)" :disabled="imageLoading">查看{{ side === 'before' ? '操作前' : '操作后' }}图片</button>
-            <img v-if="imageUrls[side]" :src="imageUrls[side]" :alt="`${side === 'before' ? '操作前' : '操作后'}第四官员记录单历史图片`" />
+            <img v-if="imageUrls[side]" :src="imageUrls[side]" :alt="`${side === 'before' ? '操作前' : '操作后'}${detail[`${side}_snapshot`]?.match?.futsal?'比赛记录单':'第四官员记录单'}历史图片`" />
           </div>
         </div>
       </div>
@@ -42,12 +42,12 @@ import {reportAPI,fileAPI} from '../api'
 import ReportSnapshot from './ReportSnapshot.vue'
 export default {
   components:{ReportSnapshot},
-  props:{scheduleId:{type:Number,required:true},supervisorRequired:{type:Boolean,default:true}},
+  props:{scheduleId:{type:Number,required:true},supervisorRequired:{type:Boolean,default:true},hasSupervisorHistory:{type:Boolean,default:false}},
   data(){return {section:null,page:1,total:0,items:[],loading:false,error:'',detail:null,detailLoading:false,imageLoading:false,imageUrls:{},requestId:0,detailRequestId:0}},
   beforeUnmount(){this.requestId++;this.detailRequestId++;this.clearImages()},
   methods:{
-    operationLabel(op){return ({baseline:'升级基线',save:'保存草稿',submit:'提交',return:'管理员退回',revise:'管理员修订',upload_image:'上传/替换图片',remove_image:'移除当前图片'})[op] || op},
-    sourceLabel(source){return ({legacy:'历史基线',referee:'裁判本人',admin_proxy:'管理员代填',admin_revision:'管理员退回/修订'})[source] || source},
+    operationLabel(op){return ({reassign:'调整裁判选派',baseline:'升级基线',save:'保存草稿',submit:'提交',return:'管理员退回',revise:'管理员修订',upload_image:'上传/替换图片',remove_image:'移除当前图片'})[op] || op},
+    sourceLabel(source){return ({admin_assignment:'管理员调整选派',legacy:'历史基线',referee:'裁判本人',admin_proxy:'管理员代填',admin_revision:'管理员退回/修订'})[source] || source},
     date(value){return value?new Date(value).toLocaleString('zh-CN'):'-'},
     clearImages(){Object.values(this.imageUrls).forEach(url=>URL.revokeObjectURL(url));this.imageUrls={}},
     close(){this.requestId++;this.detailRequestId++;this.section=null;this.detail=null;this.detailLoading=false;this.imageLoading=false;this.clearImages()},

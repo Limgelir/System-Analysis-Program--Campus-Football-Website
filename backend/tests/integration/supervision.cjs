@@ -29,7 +29,7 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
   await assert.rejects(pool.execute("UPDATE match_official_assignments SET referee_id=? WHERE schedule_id=? AND role='assistant1'",[refs[0].id,none.id]),/Duplicate entry/);
   const preserved=await call('/api/schedule/'+none.id,{...base,field_order:'SUP-NONE'},'PUT');assert.equal(preserved.supervisor_required,false);
  });
- await t.test('裁判员兼任第四官员支持系统和非系统人员，保存、岗位评分、锁定与数据库约束一致',async()=>{
+ await t.test('裁判员兼任第四官员支持系统和非系统人员，保存、岗位评分、换人与数据库约束一致',async()=>{
   for(const source of ['system','external']){
    const ids=source==='system'?refs.map(r=>r.id):ext.map(r=>'external:'+r.id);
    let m=await call('/api/schedule',{...base,field_order:'MAIN-FOURTH-'+source,main_referee_id:ids[0],assistant1_id:ids[1],assistant2_id:ids[2],fourth_official_id:ids[0],supervisor_id:refs[3].id},'POST');
@@ -59,12 +59,14 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
     const entry=await call('/api/report/schedule/'+m.id+'/history-entry/'+history.items[0].id,undefined,'GET',200,refs[0].token);
     assert.deepEqual(entry.after_snapshot.data.reviews.map(r=>r.target_role).sort(),['fourth','main']);
    }
-   await assign(m,{fourth_official_id:ids[3]},400);
+   await assign(m,{fourth_official_id:ids[3]});
   }
   const c=await pool.getConnection();try{
    const before=(await c.query('SELECT * FROM match_official_assignments ORDER BY id'))[0];
    await require('../../../db/migrations/0029_main_fourth_dual_role').up(c);
    await require('../../../db/migrations/0029_main_fourth_dual_role').up(c);
+   // 重放旧迁移后继续前向升级，恢复0033新增岗位对应的生成列定义。
+   await require('../../../db/migrations/0033_futsal_officials').up(c);
    assert.deepEqual((await c.query('SELECT * FROM match_official_assignments ORDER BY id'))[0],before);
   }finally{c.release();}
  });
@@ -111,7 +113,7 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
   const h=await call(`/api/report/schedule/${dual.id}/history/supervisor`,undefined,'GET',200,refs[0].token);
   const detail=await call(`/api/report/schedule/${dual.id}/history-entry/${h.items[0].id}`,undefined,'GET',200,refs[0].token);assert.equal(detail.after_snapshot.data.reviews.length,4);
  });
- await t.test('裁判员报告开始后仅裁判监督可改，保留岗位ID及裁判员统计；裁判监督开始后需求与人选锁定',async()=>{
+ await t.test('更换裁判监督保留场上岗位ID及统计，报告开始后仍可调整监督需求',async()=>{
   await call(`/api/report/schedule/${late.id}/main`,{stats:[{role:'main',running_distance_m:6200}]},'POST',200,refs[0].token);
   const before=(await pool.query('SELECT * FROM match_referee_stats WHERE report_id=?',[late.report_id]))[0];
   const original=(await pool.query('SELECT * FROM match_official_assignments WHERE schedule_id=? ORDER BY id',[late.id]))[0];
@@ -120,11 +122,11 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
   late=await assign(late,{supervisor_required:true,supervisor_id:refs[1].id});
   assert.deepEqual((await pool.query('SELECT * FROM match_referee_stats WHERE report_id=?',[late.report_id]))[0],before);
   assert.deepEqual((await pool.query("SELECT * FROM match_official_assignments WHERE schedule_id=? AND role<>'supervisor' ORDER BY id",[late.id]))[0],original);
-  await assign(late,{main_referee_id:refs[4].id},400);
+  await assign(late,{main_referee_id:refs[4].id},409);
   await call('/api/schedule/'+late.id,{...base,field_order:'SUP-LATE',supervisor_id:refs[1].id,supervisor_required:false},'PUT',400);
   await call(`/api/report/schedule/${late.id}/supervisor`,scores,'POST',200,refs[1].token);
   const locked=await call('/api/schedule/'+late.id);assert.equal(locked.supervisor_locked,true);
-  await assign(late,{supervisor_required:false},400);await assign(late,{supervisor_id:refs[4].id},400);
+  await assign(late,{supervisor_required:false});await assign(late,{supervisor_required:true,supervisor_id:refs[4].id},409);
  });
  await t.test('非系统裁判监督可兼任场上岗位；管理员代填、提交、修订保留操作者和评分归属',async()=>{
   external=await call('/api/schedule',{...base,field_order:'SUP-EXTERNAL',fourth_official_id:'external:'+ext[0].id,supervisor_id:'external:'+ext[0].id},'POST');
@@ -138,7 +140,7 @@ module.exports=async({t,pool,state,request,expectStatus})=>{
   r=await call(`/api/report/admin/schedule/${external.id}/sections/supervisor/revise`,{reason:'核实评分修订',data:{reviews:[{target_role:'main',score:9}]}},'POST');assert.equal(r.report.supervisor_review_status,'submitted');assert.equal(Number(r.reviews.find(r=>r.target_role==='main').score),9);
   const [rows]=await pool.query('SELECT reviewer_referee_id,reviewer_assignment_id FROM match_referee_reviews WHERE report_id=?',[external.report_id]);assert.ok(rows.every(r=>r.reviewer_referee_id===null&&r.reviewer_assignment_id===external.officials.find(a=>a.role==='supervisor').id));
   assert.ok(r.actor_events.some(e=>e.operation==='submit_supervisor'&&e.source_type==='admin_proxy'));
-  await assign(external,{supervisor_required:false},400);
+  await assign(external,{supervisor_required:false});
  });
  await t.test('裁判监督代填待办、并发修改与审核意向保持一致，数据库重复迁移不改变账号及报告',async()=>{
   const m=await call('/api/schedule',{...base,field_order:'SUP-PENDING',supervisor_id:'external:'+ext[1].id},'POST');

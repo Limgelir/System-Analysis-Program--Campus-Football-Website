@@ -42,7 +42,7 @@ module.exports = async function({t,pool,state,request,expectStatus}) {
     expectStatus(await request(`${url}/sections/main/revise`,{token:admin,autoRevision:false,body:{reason:'测试',data:{home_score:1}}}),409,'无版本不得修订');
     assert.deepEqual(await historyRows(),before);
   });
-  await t.test('8 退回只开放裁判员区，原提交记录、另一分区与岗位锁定保持',async()=>{
+  await t.test('8 退回只开放裁判员区，原提交记录、另一分区提交状态保持',async()=>{
     const before=await detail(),revision=before.sections.main.revision;
     const returned=await request(`${url}/sections/main/return`,{token:admin,body:{reason:'核对进球时间'}});expectStatus(returned,200,'退回裁判员');
     const after=returned.data.data;
@@ -54,7 +54,6 @@ module.exports = async function({t,pool,state,request,expectStatus}) {
     expectStatus(await request(`${normal}/main`,{token:main,autoRevision:false,body:{home_score:1}}),409,'旧客户端必须刷新升级');
     expectStatus(await request(`${normal}/main`,{token:state.tokens.assistant1,body:{home_score:1}}),403,'只开放原裁判员');
     expectStatus(await request(`${normal}/supervisor`,{token:sup,body:{reviews:[]}}),400,'另一分区仍锁定');
-    expectStatus(await request(`/api/schedule/${id}/assign-referees`,{token:admin,method:'PUT',body:{main_referee_id:null}}),400,'退回仍不能改派');
     expectStatus(await request(`/api/schedule/${id}`,{token:admin,method:'PUT',body:{match_time: '17:35', match_date: '2026-12-31'}}),400,'退回仍不能改比赛');
     expectStatus(await request(`${url}/sections/main/return`,{token:admin,body:{reason:'重复退回'}}),400,'不能重复退回');
   });
